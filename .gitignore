@@ -13,3 +13,15 @@
 .externalNativeBuild
 .cxx
 local.properties
+
+# --- Backend (Spring Boot) ---
+/backend/build/
+/backend/.gradle/
+/backend/storage/
+/backend/out/
+*.log
+
+# --- Secrets：絕不提交 ---
+.env
+.env.*
+!.env.example

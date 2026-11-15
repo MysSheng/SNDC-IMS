@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 僅 debug 版：允許以 HTTP 連到模擬器的本機後端（10.0.2.2）。正式版只允許 HTTPS。 -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application android:networkSecurityConfig="@xml/network_security_config" />
+</manifest>

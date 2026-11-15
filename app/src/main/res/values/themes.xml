@@ -1,9 +1,4 @@
 <resources xmlns:tools="http://schemas.android.com/tools">
-    <!-- Base application theme. -->
-    <style name="Base.Theme.SNDC_IMS" parent="Theme.Material3.DayNight.NoActionBar">
-        <!-- Customize your light theme here. -->
-        <!-- <item name="colorPrimary">@color/my_light_primary</item> -->
-    </style>
-
-    <style name="Theme.SNDC_IMS" parent="Base.Theme.SNDC_IMS" />
+    <!-- 畫面由 Jetpack Compose 繪製；此主題只負責啟動時的視窗外觀。 -->
+    <style name="Theme.SNDC_IMS" parent="android:Theme.Material.Light.NoActionBar" />
 </resources>

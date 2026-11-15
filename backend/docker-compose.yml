@@ -1,0 +1,14 @@
+# 本機開發用 PostgreSQL（可選；也可直接安裝 PostgreSQL 18）
+services:
+  postgres:
+    image: postgres:18
+    environment:
+      POSTGRES_DB: sndc_ims
+      POSTGRES_USER: sndc
+      POSTGRES_PASSWORD: change-me
+    ports:
+      - "5432:5432"
+    volumes:
+      - sndc_pgdata:/var/lib/postgresql/data
+volumes:
+  sndc_pgdata:

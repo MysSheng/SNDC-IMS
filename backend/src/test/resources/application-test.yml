@@ -1,0 +1,14 @@
+spring:
+  datasource:
+    url: jdbc:h2:mem:ims;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;DEFAULT_NULL_ORDERING=HIGH;DB_CLOSE_DELAY=-1
+    username: sa
+    password: ""
+    driver-class-name: org.h2.Driver
+app:
+  timezone: UTC
+  auth:
+    jwt-secret: test-only-secret-0123456789-abcdefghijklmnop
+    jwt-expiration: PT1H
+    registration-code: TEST-CODE-2026
+    max-failed-logins: 5
+    lockout-duration: PT15M

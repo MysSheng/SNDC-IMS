@@ -1,0 +1,51 @@
+spring:
+  application:
+    name: sndc-ims-backend
+  config:
+    # 若 backend/.env 存在則讀取（KEY=VALUE 格式）；環境變數優先權較高
+    import: optional:file:.env[.properties]
+  profiles:
+    active: ${SPRING_PROFILES_ACTIVE:dev}
+  datasource:
+    url: ${DATABASE_URL:jdbc:postgresql://localhost:5432/sndc_ims}
+    username: ${DATABASE_USERNAME:sndc}
+    password: ${DATABASE_PASSWORD:}
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: none   # Schema 只由 Flyway 管理
+    properties:
+      hibernate:
+        jdbc:
+          time_zone: UTC
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+server:
+  # 只監聽本機；手機經 tailscale serve 以 HTTPS 轉發進來（規格書第 2.6 節）
+  address: ${SERVER_ADDRESS:127.0.0.1}
+  port: ${PORT:8080}
+  error:
+    include-stacktrace: never
+    include-message: never
+
+app:
+  timezone: ${APP_TIMEZONE:UTC}
+  auth:
+    # 必填：至少 32 個字元的隨機字串（HS256）
+    jwt-secret: ${JWT_SECRET:}
+    jwt-expiration: ${JWT_EXPIRATION:PT12H}
+    # 必填：團部通行碼，只用於註冊資格驗證
+    registration-code: ${DEPARTMENT_REGISTRATION_CODE:}
+    max-failed-logins: 5
+    lockout-duration: PT15M
+  base-url: ${APP_BASE_URL:http://localhost:8080}
+  paging:
+    default-size: 20
+    max-size: 100
+
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html
