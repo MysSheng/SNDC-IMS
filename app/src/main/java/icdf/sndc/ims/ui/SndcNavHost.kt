@@ -11,6 +11,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import icdf.sndc.ims.data.AppContainer
+import icdf.sndc.ims.ui.agent.AgentChatViewModel
 import icdf.sndc.ims.ui.assets.AssetDetailScreen
 import icdf.sndc.ims.ui.assets.AssetDetailViewModel
 import icdf.sndc.ims.ui.assets.AssetFormScreen
@@ -32,6 +33,9 @@ private object Routes {
     const val NAVIGATION = "navigation"
     const val ASSET_DETAIL = "asset/{id}"
     const val ASSET_FORM = "asset-form?id={id}"
+    const val GUIDE = "guide?location={location}"
+
+    fun guide(location: String?) = if (location == null) "guide" else "guide?location=${android.net.Uri.encode(location)}"
 
     fun assetDetail(id: String) = "asset/$id"
     fun assetForm(id: String? = null) = if (id == null) "asset-form" else "asset-form?id=$id"
@@ -75,8 +79,10 @@ fun SndcNavHost(container: AppContainer) {
         }
         composable(Routes.SMART_OFFICE) {
             val vm = viewModel { AssetListViewModel(container.assetRepository) }
+            val agentVm = viewModel { AgentChatViewModel(container.agentRepository) }
             SmartOfficeScreen(
                 viewModel = vm,
+                agentViewModel = agentVm,
                 onBack = { nav.popBackStack() },
                 onOpen = { id -> nav.navigate(Routes.assetDetail(id)) },
                 onCreate = { nav.navigate(Routes.assetForm()) },
@@ -94,6 +100,19 @@ fun SndcNavHost(container: AppContainer) {
                 onBack = { nav.popBackStack() },
                 onEdit = { nav.navigate(Routes.assetForm(id)) },
                 onDeleted = { nav.popBackStack() },
+                onGuide = { location -> nav.navigate(Routes.guide(location)) },
+            )
+        }
+        composable(
+            Routes.GUIDE,
+            arguments = listOf(navArgument("location") { type = NavType.StringType; nullable = true; defaultValue = null }),
+        ) { entry ->
+            val location = entry.arguments?.getString("location")
+            PlaceholderScreen(
+                title = "室內導引",
+                message = "室內導引功能尚未開放。\n\n未來將可從你目前所在的房間或地點，導引你前往" +
+                    (if (location.isNullOrBlank()) "資產的存放位置。" else "「$location」。"),
+                onBack = { nav.popBackStack() },
             )
         }
         composable(

@@ -1,7 +1,7 @@
 # SNDC-IMS 智慧辦公室管理系統
 
 索馬利蘭外交替代役團部內部使用的資產管理系統（約 15 人）。
-完整需求見 [`docs/PROJECT_SPEC.md`](docs/PROJECT_SPEC.md)（v1.4）。
+完整需求見 [`docs/PROJECT_SPEC.md`](docs/PROJECT_SPEC.md)（v1.5）。
 
 **部署方式：本機架設（零成本）。** Server、PostgreSQL 與照片都在團部的一台 Windows 電腦上，以 Windows 服務在背景執行。手機透過 Tailscale 私有網路以 HTTPS 連線，在團部內外都能使用。Server 程式結束或電腦重開機，資料都不會遺失（資料存在 PostgreSQL 的磁碟檔案中）。
 
@@ -15,6 +15,7 @@ SNDC_IMS/
 │   │   ├── asset/       資產 CRUD、查詢、到期日計算
 │   │   ├── location/    存放位置
 │   │   ├── manager/     資產保管人
+│   │   ├── ai/          AI 助理（Groq）：自然語言 → 驗證 → 查詢／待確認動作
 │   │   ├── auth/        註冊、登入、登入失敗次數限制
 │   │   ├── security/    Spring Security、JWT
 │   │   ├── user/        App 登入帳號
@@ -143,7 +144,7 @@ cd backend
 | 1 Backend 骨架與資料庫 | ✅ 完成（本機啟動與 PostgreSQL 連線已確認） |
 | 2 認證與 Android 基礎 | ✅ 完成（本機與 App 測試通過） |
 | 3 資產管理 | 🔧 App 手動 CRUD 與多條件查詢完成；重複統計、照片尚未開始 |
-| 4 AI Agent | ⏳ 未開始 |
+| 4 AI Agent（Groq） | 🔧 程式碼完成，待本機測試 |
 | 5 Polish & Testing | ⏳ 未開始 |
 | 6 Deployment（本機架設） | ⏳ 未開始 |
 
@@ -177,9 +178,17 @@ cd backend
   - 清單新增「篩選條件」：存放位置、保管人、使用年限狀態（已過使用年限、90 天內到期、使用年限內），可以與關鍵字同時使用。
   - 清單與詳情會標示已過使用年限或 90 天內到期的資產。
 
+### Phase 4（AI 助理）已完成（程式碼）
+
+- 在智慧辦公室管理系統畫面點右下角的「小管家」頭像，即可用自然語言查詢、統計、找重複品項，以及修改或刪除資產（可批次）。
+- 修改與刪除會先跳出確認視窗，列出所有受影響的資產，按「確認」後才執行。新增資產仍須手動。
+- 查詢結果可按「在清單中顯示」，把同樣的條件套用到主清單。
+- 資產詳情頁新增「導引」按鈕，是室內導引的預留入口，目前顯示功能尚未開放。
+- 設定方式：在 `backend/.env` 填入 `GROQ_API_KEY`（到 <https://console.groq.com/keys> 建立）。沒有設定也不影響其他功能。
+
 ### 尚未完成（依規格排在後續 Phase）
 
-- 重複品項統計、`/assets/count`（Phase 3 後半）。App 尚未提供購置日期範圍和數量下限的篩選畫面（後端已支援）。
+- App 的重複品項畫面（目前可透過小管家查詢）。App 尚未提供購置日期範圍和數量下限的篩選畫面（後端已支援）。
 - 照片上傳 API 與 Storage Provider（Phase 3）。
 - AssetHistory／AuditLogs：第一版目前只有 `created_at`、`updated_at`、`deleted_at`，完整歷史紀錄列為後續項目。
 
@@ -199,6 +208,8 @@ cd backend
 | `specification`／`description` | 使用 `VARCHAR(2000)`，不用 `TEXT`，以便與 H2 測試相容 | V1 migration |
 | JSON 欄位命名 | camelCase | — |
 | 所屬技術團 | 必填、自由輸入文字；App 新增時預先填入「駐索馬利蘭技術團」 | `AssetFormUiState` |
+| AI 模型 | `openai/gpt-oss-120b`（Groq，可用 `GROQ_MODEL` 更換） | `.env` |
+| AI 批次上限 | 刪除 100 筆、修改 50 筆；待確認動作 10 分鐘失效 | `AgentService`、`PendingActionStore` |
 | 「即將到期」範圍 | 90 天 | `AssetService.EXPIRING_SOON_DAYS` |
 | 已過使用年限的判斷 | 預計到期日 ≤ 今天（伺服器時區） | `ExpiryStatus` |
 | 必填欄位的強制方式 | 由 API 驗證；資料庫欄位暫不加 NOT NULL，避免 V2 migration 因既有測試資料失敗 | V2 migration |

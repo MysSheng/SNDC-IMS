@@ -1,4 +1,4 @@
-# REST API 文件（Spring Boot 4.1，資產欄位 v1.3）
+# REST API 文件（Spring Boot 4.1，規格書 v1.5）
 
 - Base path：`/api/v1`
 - 正式環境 Base URL：`https://<電腦名稱>.<tailnet>.ts.net/api/v1`（經 Tailscale；後端本身只監聽 127.0.0.1:8080）
@@ -34,6 +34,10 @@
 | 409 | `ASSET_CODE_DUPLICATE` | 資產編號已存在（含已刪除的資產） |
 | 409 | `LOCATION_NAME_DUPLICATE` | 位置名稱已存在 |
 | 409 | `DATA_CONFLICT` | 其他資料庫唯一性衝突 |
+| 404 | `ACTION_NOT_FOUND` | AI 待確認動作不存在、已過期（10 分鐘）、已執行，或屬於其他使用者 |
+| 503 | `AI_NOT_CONFIGURED` | 伺服器未設定 `GROQ_API_KEY`，或金鑰被 Groq 拒絕 |
+| 503 | `AI_BUSY` | Groq 使用量達上限（HTTP 429） |
+| 503 | `AI_UNAVAILABLE` | Groq 逾時或發生錯誤 |
 | 415 | `UNSUPPORTED_MEDIA_TYPE` | Content-Type 不是 JSON |
 | 500 | `INTERNAL_ERROR` | 未預期的錯誤（不回傳 stack trace） |
 
@@ -136,6 +140,7 @@ Token 為 HS256 JWT，有效期限由 `JWT_EXPIRATION` 設定（預設 12 小時
 | itemName | 部分符合 |
 | techMission, color | 完全符合 |
 | expiryStatus | `EXPIRED`／`EXPIRING_SOON`／`VALID` |
+| expiresFrom, expiresTo | 預計到期日範圍（含頭尾），`YYYY-MM-DD` |
 | purchasedFrom, purchasedTo | 購置日期範圍（含頭尾），`YYYY-MM-DD` |
 | minQuantity | 數量 ≥ 此值 |
 | managerId, locationId | UUID |
@@ -175,9 +180,44 @@ Soft Delete：設定 `deleted_at`，資料仍保留在資料庫中。
 { "displayName": "李大豪", "userId": "選填，對應 App 使用者" }
 ```
 
+### `GET /assets/duplicates` → `200`
+名稱相同即視為同一品項，合計數量大於 1 才列入（規格書第 5 節）：
+```json
+[ { "itemName": "冷氣", "totalQuantity": 5, "recordCount": 2 } ]
+```
+
+## AI 助理（Groq）
+
+模型只把自然語言轉成結構化條件；查詢、驗證、執行都在後端進行。修改與刪除一律需要使用者確認。
+
+### `POST /ai/asset-query` → `200` AgentResponse
+```json
+{ "message": "我想找由李大維技師管理且快要過期的資產",
+  "history": [ { "role": "user", "content": "…" }, { "role": "assistant", "content": "…" } ] }
+```
+- `message` ≤ 500 字；`history` 最多 6 則（App 送回先前回應的 `historyText`），用來理解「把它們刪掉」這類說法。
+
+AgentResponse：
+
+| 欄位 | 說明 |
+|---|---|
+| intent | `SEARCH`／`COUNT`／`DUPLICATES`／`DELETE`／`UPDATE`／`CLARIFY`／`UNSUPPORTED` |
+| reply | 給使用者看的回覆（由後端依資料庫結果組成） |
+| historyText | 下一輪送回 `history` 的內容（含條件摘要） |
+| filters | 已解析的條件：`keyword`、`assetCode`、`itemName`、`techMission`、`color`、`location {id,name}`、`custodian {id,name}`、`expiryStatus`、`purchasedFrom/To`、`expiresFrom/To`、`minQuantity` |
+| results, totalResults | SEARCH 的前 20 筆與總筆數；DELETE／UPDATE 時為受影響的資產 |
+| summary | COUNT：`{ recordCount, totalQuantity }` |
+| duplicates | DUPLICATES：同 `GET /assets/duplicates` |
+| pendingAction | DELETE／UPDATE：`{ id, type, description, targets[], changes{欄位中文名稱: 新值}, expiresAt }`，**尚未執行** |
+
+### `POST /ai/actions/{id}/confirm` → `200` AgentResponse（`intent = DONE`）
+執行使用者已確認的動作。只會處理 `pendingAction.targets` 列出的資產；確認前已被刪除的會略過。修改後的資料若不符合規則，整批不執行並回傳 `CLARIFY`。
+
+### `DELETE /ai/actions/{id}` → `204`
+取消待確認動作。
+
 ## 規劃中（尚未實作）
 
 | Phase | Endpoint |
 |---|---|
-| 3 | `GET /assets/duplicates`、`GET /assets/count`、`/assets/{id}/images` |
-| 4 | `POST /ai/asset-query` |
+| 3 | `/assets/{id}/images`（照片） |

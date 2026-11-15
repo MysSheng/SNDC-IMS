@@ -12,12 +12,19 @@ import icdf.sndc.ims.manager.ManagerService;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
+import org.springframework.data.jpa.domain.Specification;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.PersistenceContext;
+import jakarta.persistence.criteria.CriteriaBuilder;
+import jakarta.persistence.criteria.CriteriaQuery;
+import jakarta.persistence.criteria.Root;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -44,8 +51,11 @@ public class AssetService {
     private final AppProperties props;
     private final Clock clock;
 
+    @PersistenceContext
+    private EntityManager entityManager;
+
     /** 「即將到期」的天數範圍。 */
-    static final int EXPIRING_SOON_DAYS = 90;
+    public static final int EXPIRING_SOON_DAYS = 90;
 
     public AssetService(AssetRepository assetRepository, ManagerService managerService,
                         LocationService locationService, AppProperties props, Clock clock) {
@@ -81,8 +91,61 @@ public class AssetService {
         return toResponse(requireActive(id));
     }
 
+    /** 取得未刪除的資產；不存在時回傳 empty（不丟例外，避免標記外層交易為 rollback-only）。 */
+    @Transactional(readOnly = true)
+    public java.util.Optional<AssetResponse> findActive(UUID id) {
+        return assetRepository.findByIdAndDeletedAtIsNull(id).map(this::toResponse);
+    }
+
     @Transactional(readOnly = true)
     public PageResponse<AssetResponse> search(AssetQuery q, Integer page, Integer size, String sort) {
+        return PageResponse.from(assetRepository.findAll(spec(q), pageable(page, size, sort)), this::toResponse);
+    }
+
+    /** 符合條件的紀錄筆數與數量合計（COUNT_QUERY；規格書第 7.2 節）。 */
+    @Transactional(readOnly = true)
+    public CountSummary countSummary(AssetQuery q) {
+        Specification<Asset> spec = spec(q);
+        CriteriaBuilder cb = entityManager.getCriteriaBuilder();
+
+        CriteriaQuery<Long> countQuery = cb.createQuery(Long.class);
+        Root<Asset> countRoot = countQuery.from(Asset.class);
+        countQuery.select(cb.count(countRoot)).where(spec.toPredicate(countRoot, countQuery, cb));
+        long records = entityManager.createQuery(countQuery).getSingleResult();
+
+        CriteriaQuery<Long> sumQuery = cb.createQuery(Long.class);
+        Root<Asset> sumRoot = sumQuery.from(Asset.class);
+        sumQuery.select(cb.coalesce(cb.sumAsLong(sumRoot.get("quantity")), 0L))
+                .where(spec.toPredicate(sumRoot, sumQuery, cb));
+        long total = entityManager.createQuery(sumQuery).getSingleResult();
+        return new CountSummary(records, total);
+    }
+
+    @Transactional(readOnly = true)
+    public List<DuplicateItem> duplicates() {
+        return assetRepository.findDuplicates();
+    }
+
+    /** 由現有資產建立整筆取代用的請求（供 AI 助理的修改功能只覆寫指定欄位）。 */
+    public static AssetRequest toRequest(AssetResponse a) {
+        return new AssetRequest(
+                a.assetCode(), a.itemName(), a.techMission(),
+                a.manager() == null ? null : a.manager().id(),
+                a.purchaseDate(), a.usefulLifeYears(),
+                a.location() == null ? null : a.location().id(),
+                a.color(), a.quantity(), a.description());
+    }
+
+    private Specification<Asset> spec(AssetQuery q) {
+        if (q.purchasedFrom() != null && q.purchasedTo() != null && q.purchasedFrom().isAfter(q.purchasedTo())) {
+            throw ApiException.invalidField("purchasedFrom", "purchasedFrom must not be after purchasedTo");
+        }
+        if (q.expiresFrom() != null && q.expiresTo() != null && q.expiresFrom().isAfter(q.expiresTo())) {
+            throw ApiException.invalidField("expiresFrom", "expiresFrom must not be after expiresTo");
+        }
+        if (q.minQuantity() != null && q.minQuantity() < 1) {
+            throw ApiException.invalidField("minQuantity", "minQuantity must be at least 1");
+        }
         AssetQuery normalized = new AssetQuery(
                 TextNormalizer.normalize(q.keyword()),
                 TextNormalizer.normalize(q.assetCode()),
@@ -94,16 +157,10 @@ public class AssetService {
                 q.expiryStatus(),
                 q.purchasedFrom(),
                 q.purchasedTo(),
+                q.expiresFrom(),
+                q.expiresTo(),
                 q.minQuantity());
-        if (q.purchasedFrom() != null && q.purchasedTo() != null && q.purchasedFrom().isAfter(q.purchasedTo())) {
-            throw ApiException.invalidField("purchasedFrom", "purchasedFrom must not be after purchasedTo");
-        }
-        if (q.minQuantity() != null && q.minQuantity() < 1) {
-            throw ApiException.invalidField("minQuantity", "minQuantity must be at least 1");
-        }
-        return PageResponse.from(
-                assetRepository.findAll(AssetSpecifications.matching(normalized, today(), EXPIRING_SOON_DAYS), pageable(page, size, sort)),
-                this::toResponse);
+        return AssetSpecifications.matching(normalized, today(), EXPIRING_SOON_DAYS);
     }
 
     @Transactional

@@ -39,6 +39,14 @@ app:
     registration-code: ${DEPARTMENT_REGISTRATION_CODE:}
     max-failed-logins: 5
     lockout-duration: PT15M
+  ai:
+    # 選填：未設定時 AI 助理會回傳「AI 服務未設定」，其他功能不受影響
+    groq-api-key: ${GROQ_API_KEY:}
+    groq-model: ${GROQ_MODEL:openai/gpt-oss-120b}
+    groq-base-url: ${GROQ_BASE_URL:https://api.groq.com/openai/v1}
+    # gpt-oss 系列可設 low／medium／high；其他模型請留空
+    reasoning-effort: ${GROQ_REASONING_EFFORT:low}
+    timeout: PT30S
   base-url: ${APP_BASE_URL:http://localhost:8080}
   paging:
     default-size: 20

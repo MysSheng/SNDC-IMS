@@ -112,6 +112,15 @@ public final class AssetDtos {
             ExpiryStatus expiryStatus,
             LocalDate purchasedFrom,
             LocalDate purchasedTo,
+            LocalDate expiresFrom,
+            LocalDate expiresTo,
             Integer minQuantity
-    ) {}
+    ) {
+        /** 是否至少有一個條件（批次修改／刪除時必須有條件，避免誤刪全部）。 */
+        public boolean hasAnyCondition() {
+            return keyword != null || assetCode != null || itemName != null || techMission != null || color != null
+                    || managerId != null || locationId != null || expiryStatus != null || purchasedFrom != null
+                    || purchasedTo != null || expiresFrom != null || expiresTo != null || minQuantity != null;
+        }
+    }
 }

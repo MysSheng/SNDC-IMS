@@ -3,6 +3,7 @@ package icdf.sndc.ims.data
 import android.content.Context
 import icdf.sndc.ims.BuildConfig
 import icdf.sndc.ims.data.prefs.UserPreferences
+import icdf.sndc.ims.data.remote.AgentApi
 import icdf.sndc.ims.data.remote.AssetApi
 import icdf.sndc.ims.data.remote.AuthApi
 import icdf.sndc.ims.data.session.SessionManager
@@ -42,7 +43,7 @@ class AppContainer(context: Context) {
 
     private val okHttp = OkHttpClient.Builder()
         .connectTimeout(10, TimeUnit.SECONDS)
-        .readTimeout(30, TimeUnit.SECONDS)
+        .readTimeout(60, TimeUnit.SECONDS)   // AI 助理回應可能需要較久
         .addInterceptor(authInterceptor)
         .build()
 
@@ -54,4 +55,5 @@ class AppContainer(context: Context) {
 
     val authRepository = AuthRepository(retrofit.create(AuthApi::class.java), session, userPreferences, json)
     val assetRepository = AssetRepository(retrofit.create(AssetApi::class.java), json)
+    val agentRepository = AgentRepository(retrofit.create(AgentApi::class.java), json)
 }

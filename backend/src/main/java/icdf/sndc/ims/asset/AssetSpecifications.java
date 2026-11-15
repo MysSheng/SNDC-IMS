@@ -62,6 +62,12 @@ final class AssetSpecifications {
             if (q.purchasedTo() != null) {
                 p.add(cb.lessThanOrEqualTo(root.get("purchaseDate"), q.purchasedTo()));
             }
+            if (q.expiresFrom() != null) {
+                p.add(cb.greaterThanOrEqualTo(root.get("expectedExpiryDate"), q.expiresFrom()));
+            }
+            if (q.expiresTo() != null) {
+                p.add(cb.lessThanOrEqualTo(root.get("expectedExpiryDate"), q.expiresTo()));
+            }
             if (q.minQuantity() != null) {
                 p.add(cb.greaterThanOrEqualTo(root.get("quantity"), q.minQuantity()));
             }

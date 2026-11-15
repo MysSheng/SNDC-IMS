@@ -26,7 +26,13 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
 @Composable
-fun AssetDetailScreen(viewModel: AssetDetailViewModel, onBack: () -> Unit, onEdit: () -> Unit, onDeleted: () -> Unit) {
+fun AssetDetailScreen(
+    viewModel: AssetDetailViewModel,
+    onBack: () -> Unit,
+    onEdit: () -> Unit,
+    onDeleted: () -> Unit,
+    onGuide: (locationName: String?) -> Unit,
+) {
     val state by viewModel.state.collectAsStateWithLifecycle()
 
     // 每次進入（包含修改後返回）都重新讀取
@@ -67,6 +73,10 @@ fun AssetDetailScreen(viewModel: AssetDetailViewModel, onBack: () -> Unit, onEdi
                 InfoRow("顏色", asset.color)
                 InfoRow("備註", asset.description)
                 HorizontalDivider()
+                // 室內導引：預留入口，未來從目前位置導引到資產的存放位置
+                Button(onClick = { onGuide(asset.location?.name) }, modifier = Modifier.fillMaxWidth()) {
+                    Text("導引")
+                }
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     Button(onClick = onEdit) { Text("修改") }
                     OutlinedButton(

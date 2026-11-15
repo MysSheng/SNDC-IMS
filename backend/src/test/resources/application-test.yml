@@ -12,3 +12,5 @@ app:
     registration-code: TEST-CODE-2026
     max-failed-logins: 5
     lockout-duration: PT15M
+  ai:
+    groq-api-key: ""

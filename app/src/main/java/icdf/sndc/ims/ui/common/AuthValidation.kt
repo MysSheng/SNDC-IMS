@@ -26,6 +26,11 @@ object AuthValidation {
 fun AppError.toUserMessage(): String = when (this) {
     AppError.Network -> "無法連線到伺服器，請確認網路連線，以及伺服器是否已開啟。"
     is AppError.Server -> "伺服器發生錯誤，請稍後再試。"
+    is AppError.Unavailable -> when (code) {
+        "AI_NOT_CONFIGURED" -> "AI 助理尚未設定：請在伺服器的 backend/.env 設定 GROQ_API_KEY。"
+        "AI_BUSY" -> "AI 助理目前使用量已達上限，請稍後再試。"
+        else -> "AI 助理暫時無法使用，請稍後再試。"
+    }
     is AppError.Auth -> when (code) {
         "INVALID_CREDENTIALS" -> "使用者名稱或 PIN 碼錯誤。"
         "INVALID_REGISTRATION_CODE" -> "團部通行碼錯誤。"
@@ -34,6 +39,8 @@ fun AppError.toUserMessage(): String = when (this) {
     }
     is AppError.Validation -> when (code) {
         "USERNAME_TAKEN" -> "此使用者名稱已被使用。"
+        "ACTION_NOT_FOUND" -> "這個動作已失效（超過 10 分鐘或已執行過），請重新提出需求。"
+        "NOT_FOUND" -> "找不到這筆資料，可能已被刪除。"
         else -> "輸入資料有誤，請檢查後再試。"
     }
 }

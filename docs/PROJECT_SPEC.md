@@ -1,6 +1,6 @@
 # 智慧辦公室管理系統 --- 專案工程規格書
 
-> 文件版本：1.4（2026-11-11 修訂，見文末「修訂紀錄」）\
+> 文件版本：1.5（2026-11-11 修訂，見文末「修訂紀錄」）\
 > 文件狀態：MVP 開發基準（部分決策標示為待確認）\
 > 目標讀者：Claude Code、專案開發者\
 > 專案脈絡：索馬利蘭外交替代役團部內部使用\
@@ -33,7 +33,7 @@ Demo。
     secret、密碼雜湊、輸入驗證及參數化資料庫查詢；不要自行擴張成企業級
     IAM 或繁複帳號防護系統。
 8.  **所有重要設定使用環境變數**：不得把團部通行碼、JWT
-    secret、OpenRouter API Key、資料庫密碼或正式儲存憑證寫入程式碼、Git
+    secret、Groq API Key、資料庫密碼或正式儲存憑證寫入程式碼、Git
     或 Android APK。
 9.  **完成後更新文件**：至少維護 README、API
     文件、資料庫遷移、環境變數範例及測試說明。
@@ -117,7 +117,7 @@ Kubernetes、微服務拆分及 GPU 部署。 - 雲端主機部署（第一版�
                 │                 │
                 ▼                 ▼
        ┌────────────────┐  ┌────────────────┐
-       │  PostgreSQL    │  │ OpenRouter API │
+       │  PostgreSQL    │  │   Groq API     │
        │  Persistent DB │  │ LLM inference  │
        └────────────────┘  └────────────────┘
                 │
@@ -128,7 +128,7 @@ Kubernetes、微服務拆分及 GPU 部署。 - 雲端主機部署（第一版�
        └────────────────┘
 ```
 
-Server、PostgreSQL 與照片皆位於同一台團部 Windows 電腦；手機經 Tailscale 私有網路以 HTTPS 連線（見第 2.6 節）。只有 AI 查詢會呼叫外部的 OpenRouter API。
+Server、PostgreSQL 與照片皆位於同一台團部 Windows 電腦；手機經 Tailscale 私有網路以 HTTPS 連線（見第 2.6 節）。只有 AI 查詢會呼叫外部的 Groq API。
 
 ### 2.2 Android Client
 
@@ -142,7 +142,7 @@ Server、PostgreSQL 與照片皆位於同一台團部 Windows 電腦；手機經
 -   Token：使用適當的安全儲存方式；不得把 PIN 明文保存。
 -   UI 狀態：明確處理 Loading、Success、Empty、Error。
 
-不得讓 Android App 直接連線 PostgreSQL，也不得把資料庫憑證或 OpenRouter
+不得讓 Android App 直接連線 PostgreSQL，也不得把資料庫憑證或 Groq
 API Key 放入 APK。
 
 ### 2.3 Backend
@@ -169,7 +169,7 @@ PostgreSQL 為正式資料唯一來源（Single Source of Truth）。Excel
 
 ### 2.5 AI
 
--   使用 OpenRouter API。
+-   使用 Groq API（OpenAI 相容的 Chat Completions，Structured Outputs strict JSON Schema）；模型以 `GROQ_MODEL` 設定，預設 `openai/gpt-oss-120b`。（v1.5 由 OpenRouter 改為 Groq）
 -   LLM 只負責理解自然語言、分類任務及產生受限制的結構化查詢條件。
 -   Backend 負責驗證、授權、執行查詢及計算統計。
 -   不允許 LLM 直接連線資料庫或執行任意 SQL。
@@ -330,7 +330,7 @@ created_at TIMESTAMPTZ
 或受控下載路徑，不回傳 Base64 大型圖片內容。
 
 **資料敏感性提醒：**
-資產資料與照片存放在團部電腦，不上傳第三方雲端儲存。但 AI 自然語言查詢會將查詢文字送至 OpenRouter（第三方服務），使用前仍需確認團部是否允許；不得在 AI 查詢中輸入機敏資訊。不得未經核准拍攝敏感設施、管制區域或含機敏資訊的照片。
+資產資料與照片存放在團部電腦，不上傳第三方雲端儲存。但 AI 自然語言查詢會將查詢文字送至 Groq（第三方服務）；保管人與位置的名單不送給模型，由 Backend 比對，使用前仍需確認團部是否允許；不得在 AI 查詢中輸入機敏資訊。不得未經核准拍攝敏感設施、管制區域或含機敏資訊的照片。
 
 ### 4.5 AssetHistory / AuditLogs
 
@@ -444,6 +444,19 @@ Update / Delete
 -   `DUPLICATE_ANALYSIS`：重複品項分析。
 -   `NEEDS_CLARIFICATION`：資訊不足或語意不明，需要詢問使用者。
 
+v1.5 起實作的 intent（後端名稱）：`SEARCH`、`COUNT`、`DUPLICATES`、`DELETE`、`UPDATE`、`CLARIFY`、`UNSUPPORTED`。
+
+### 7.2.1 AI 修改與刪除（v1.5 新增，已定案）
+
+-   AI 助理可依自然語言修改（含批次）與刪除（含批次）資產，例如「我們今天汰換掉由劉正正管理的過期資產了」「編號 60109-0003 的那個資產是水龍頭請幫我修正」。
+-   **新增資產不開放給 AI**，一律手動建立（intent = `UNSUPPORTED`）。
+-   查詢、統計直接執行；**修改與刪除一律先產生「待確認動作」**，App 跳出確認視窗列出所有受影響資產（與修改內容），使用者按「確認」後才執行。
+-   確認時執行的是當初列出的那幾筆（以 ID 固定），不重新查詢；動作 10 分鐘後失效，只有建立者本人可確認。
+-   沒有任何條件的修改／刪除（例如「全部刪掉」）一律拒絕並要求說明範圍；單次上限：刪除 100 筆、修改 50 筆；修改編號一次只能一筆。
+-   修改後的資料須符合手動編輯的所有規則（必填、格式、年份），否則整批不執行。
+-   保管人／位置名稱由 Backend 比對（完全相同 → 唯一部分符合 → 否則列出候選請使用者確認），人名稱謂（技師、主任等）由模型去除。
+-   回覆文字由 Backend 依資料庫實際結果組成，不由模型撰寫。
+
 ### 7.3 處理流程
 
 ``` text
@@ -546,10 +559,11 @@ Android displays result
 6.  Asset Detail Screen。
 7.  Create / Edit Asset Screen。
 8.  Delete Confirmation Dialog。
-9.  AI Search Screen 或首頁 AI 搜尋區塊。
+9.  AI 助理對話視窗：在智慧辦公室管理系統畫面右下角以原創卡通頭像「小管家」按鈕開啟，開場白「我可以怎麼協助你？」。
 10. Help / User Guide Screen。
 11. Image Viewer / Image Picker。
 12. 智慧導航入口頁（Placeholder）。
+13. 資產詳情頁的「導引」按鈕：預留未來室內導引（從目前所在房間導引到資產存放位置），目前顯示「功能尚未開放」。
 
 ### 8.2 Home Screen
 
@@ -616,7 +630,9 @@ Swagger）。
 
   Method   Endpoint            說明
   -------- ------------------- ------------------
-  POST     `/ai/asset-query`   自然語言資產查詢
+  POST     `/ai/asset-query`   自然語言資產查詢；修改／刪除回傳待確認動作
+  POST     `/ai/actions/{id}/confirm`   執行使用者已確認的動作
+  DELETE   `/ai/actions/{id}`   取消待確認動作
 
 ### 9.4 Images
 
@@ -670,7 +686,7 @@ UI。 - 開發 Excel Parser。 - 開發匯入預覽及批次更新功能。
 -   第一版沒有角色權限，因此不會因角色不足回傳 403；403 保留給未來擴充。
 -   未登入或 Token 無效回傳 401。
 -   輸入驗證失敗回傳 400。
--   Server 未設定 OpenRouter Key 時，AI API
+-   Server 未設定 GROQ_API_KEY 時，AI API
     回傳明確的服務未設定錯誤，不可假裝成功。
 
 ### 11.2 統一錯誤格式
@@ -719,8 +735,9 @@ JWT_EXPIRATION=
 
 DEPARTMENT_REGISTRATION_CODE=
 
-OPENROUTER_API_KEY=
-OPENROUTER_MODEL=
+GROQ_API_KEY=
+GROQ_MODEL=openai/gpt-oss-120b
+GROQ_REASONING_EFFORT=low
 
 APP_BASE_URL=
 APP_TIMEZONE=
@@ -731,7 +748,7 @@ IMAGE_STORAGE_PROVIDER=local
 IMAGE_STORAGE_PATH=
 ```
 
-要求： - `.env` 加入 `.gitignore`。 - 團部通行碼、JWT secret、OpenRouter
+要求： - `.env` 加入 `.gitignore`。 - 團部通行碼、JWT secret、Groq
 API Key 不得提交 Git。 - Android APK 不得包含 Server secrets。 -
 正式環境的 `.env` 只放在 Server 電腦的服務目錄，並限制檔案存取權限（僅系統管理員與服務帳號可讀）。 -
 不可把正式資料庫密碼寫在 README。
@@ -844,7 +861,7 @@ API Key 不得提交 Git。 - Android APK 不得包含 Server secrets。 -
 
 ### Phase 4 --- AI Agent
 
-1.  建立 OpenRouter Client。
+1.  建立 Groq Client。
 2.  定義任務分類與結構化輸出 DTO。
 3.  定義欄位及運算子白名單。
 4.  實作 Backend 查詢轉換及驗證。
@@ -892,7 +909,7 @@ API Key 不得提交 Git。 - Android APK 不得包含 Server secrets。 -
   Server 電腦由哪一台擔任       待確認（需可長時間開機）     Phase 6 前
   Tailscale 帳號由誰擁有        待確認（建議團部公務帳號）   Phase 6 前
   備份存放位置                  待確認（外接硬碟／另一台）   Phase 6 前
-  AI 查詢是否允許送至 OpenRouter 待確認                      Phase 4 前
+  AI 查詢是否允許送至 Groq     待確認                      Phase 4 前
   Server 時區                   預設可設定；日期語意需一致   Phase 4 前
   AI 使用模型                   透過環境變數設定             Phase 4 前
 
@@ -920,7 +937,7 @@ Pending Decisions」列出。 4. 不得把暫定值描述成使用者已確認�
 -   [ ] quantity 正確保存及統計。
 -   [ ] 重複品項依 `item_name` 分組並由 DB 計算。
 -   [ ] 照片上傳流程可用，照片存於本機資料夾並納入備份。
--   [ ] AI 自然語言查詢可用真實 OpenRouter API 與 DB。
+-   [ ] AI 自然語言查詢可用真實 Groq API 與 DB。
 -   [ ] AI 不會執行任意 SQL，也不會捏造查詢結果。
 -   [ ] 使用說明頁面可用。
 -   [ ] 智慧導航入口顯示 Placeholder。
@@ -945,6 +962,13 @@ Pending Decisions」列出。 4. 不得把暫定值描述成使用者已確認�
 ------------------------------------------------------------------------
 
 ## 修訂紀錄
+
+### v1.5（2026-11-15）
+
+-   AI 供應商由 OpenRouter 改為 Groq（`GROQ_API_KEY`、`GROQ_MODEL`）。
+-   AI 助理可修改、刪除（含批次），執行前須使用者確認；新增仍須手動（第 7.2.1 節）。
+-   App 新增「小管家」頭像按鈕與對話視窗；資產詳情新增「導引」按鈕（室內導引預留入口）。
+-   新增 `GET /assets/duplicates`，以及依預計到期日範圍查詢（`expiresFrom`／`expiresTo`）。
 
 ### v1.4（2026-11-15）
 

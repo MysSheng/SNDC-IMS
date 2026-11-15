@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- AI 助理頭像：原創的小狐狸管家「小管家」。 -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- 背景 -->
+    <path android:fillColor="#FFF4E0" android:pathData="M0,54 a54,54 0 1,0 108,0 a54,54 0 1,0 -108,0" />
+
+    <!-- 耳朵 -->
+    <path android:fillColor="#FFA94D" android:pathData="M22,44 L28,14 L48,30 Z" />
+    <path android:fillColor="#FFA94D" android:pathData="M86,44 L80,14 L60,30 Z" />
+    <path android:fillColor="#FF8A65" android:pathData="M28,38 L31,22 L42,31 Z" />
+    <path android:fillColor="#FF8A65" android:pathData="M80,38 L77,22 L66,31 Z" />
+
+    <!-- 頭 -->
+    <path android:fillColor="#FFA94D" android:pathData="M20,60 a34,32 0 1,0 68,0 a34,32 0 1,0 -68,0" />
+
+    <!-- 臉頰白毛 -->
+    <path android:fillColor="#FFF3E0" android:pathData="M30,68 a24,18 0 1,0 48,0 a24,18 0 1,0 -48,0" />
+
+    <!-- 眼睛 -->
+    <path android:fillColor="#3E2723" android:pathData="M35,56 a7,7.5 0 1,0 14,0 a7,7.5 0 1,0 -14,0" />
+    <path android:fillColor="#3E2723" android:pathData="M59,56 a7,7.5 0 1,0 14,0 a7,7.5 0 1,0 -14,0" />
+    <path android:fillColor="#FFFFFF" android:pathData="M42,52.5 a2.4,2.4 0 1,0 4.8,0 a2.4,2.4 0 1,0 -4.8,0" />
+    <path android:fillColor="#FFFFFF" android:pathData="M66,52.5 a2.4,2.4 0 1,0 4.8,0 a2.4,2.4 0 1,0 -4.8,0" />
+
+    <!-- 腮紅 -->
+    <path android:fillColor="#FF8A80" android:fillAlpha="0.75" android:pathData="M27,67 a5,4 0 1,0 10,0 a5,4 0 1,0 -10,0" />
+    <path android:fillColor="#FF8A80" android:fillAlpha="0.75" android:pathData="M71,67 a5,4 0 1,0 10,0 a5,4 0 1,0 -10,0" />
+
+    <!-- 鼻子與微笑 -->
+    <path android:fillColor="#3E2723" android:pathData="M51,64 Q54,61 57,64 Q54,68 51,64 Z" />
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M47,70 Q54,77 61,70"
+        android:strokeColor="#3E2723"
+        android:strokeLineCap="round"
+        android:strokeWidth="2.5" />
+
+    <!-- 頭上的小葉子 -->
+    <path android:fillColor="#66BB6A" android:pathData="M54,28 C55,19 63,15 70,17 C67,24 61,29 54,28 Z" />
+    <path
+        android:fillColor="#00000000"
+        android:pathData="M54,28 L53,33"
+        android:strokeColor="#388E3C"
+        android:strokeLineCap="round"
+        android:strokeWidth="2" />
+</vector>

@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import icdf.sndc.ims.data.AssetRepository
 import icdf.sndc.ims.data.remote.ApiResult
+import icdf.sndc.ims.data.remote.AgentFiltersDto
 import icdf.sndc.ims.data.remote.AssetDto
 import icdf.sndc.ims.data.remote.RefDto
 import icdf.sndc.ims.ui.common.toUserMessage
@@ -31,6 +32,9 @@ data class AssetListUiState(
     val expiry: ExpiryFilter = ExpiryFilter.ALL,
     val locationOptions: List<RefDto> = emptyList(),
     val custodianOptions: List<RefDto> = emptyList(),
+    /** AI 助理設定、清單畫面沒有對應按鈕的其他條件（名稱、日期範圍等）。 */
+    val agentExtra: AssetRepository.Filters? = null,
+    val agentExtraLabel: String? = null,
     val items: List<AssetDto> = emptyList(),
     val totalItems: Long = 0,
     val page: Int = 0,
@@ -44,9 +48,12 @@ data class AssetListUiState(
     val message: String? = null,
 ) {
     val hasMore: Boolean get() = page + 1 < totalPages
-    val hasFilters: Boolean get() = keyword.isNotBlank() || location != null || custodian != null || expiry != ExpiryFilter.ALL
+    val hasFilters: Boolean get() = keyword.isNotBlank() || location != null || custodian != null ||
+        expiry != ExpiryFilter.ALL || agentExtra != null
 
-    fun toFilters() = AssetRepository.Filters(keyword, location?.id, custodian?.id, expiry.apiValue)
+    fun toFilters() = (agentExtra ?: AssetRepository.Filters()).copy(
+        keyword = keyword, locationId = location?.id, managerId = custodian?.id, expiryStatus = expiry.apiValue,
+    )
 }
 
 class AssetListViewModel(private val repo: AssetRepository) : ViewModel() {
@@ -62,9 +69,45 @@ class AssetListViewModel(private val repo: AssetRepository) : ViewModel() {
     fun setExpiry(f: ExpiryFilter) { _state.update { it.copy(expiry = f) }; refresh() }
 
     fun clearFilters() {
-        _state.update { it.copy(keyword = "", location = null, custodian = null, expiry = ExpiryFilter.ALL) }
+        _state.update {
+            it.copy(keyword = "", location = null, custodian = null, expiry = ExpiryFilter.ALL,
+                agentExtra = null, agentExtraLabel = null)
+        }
         refresh()
     }
+
+    /** 套用 AI 助理解析出的條件，讓主清單顯示同樣的結果。 */
+    fun applyAgentFilters(f: AgentFiltersDto) {
+        val extra = AssetRepository.Filters(
+            itemName = f.itemName, assetCode = f.assetCode, techMission = f.techMission, color = f.color,
+            purchasedFrom = f.purchasedFrom, purchasedTo = f.purchasedTo,
+            expiresFrom = f.expiresFrom, expiresTo = f.expiresTo, minQuantity = f.minQuantity,
+        )
+        val labels = buildList {
+            f.itemName?.let { add("名稱含「$it」") }
+            f.assetCode?.let { add("編號 $it") }
+            f.techMission?.let { add("技術團：$it") }
+            f.color?.let { add("顏色：$it") }
+            if (f.purchasedFrom != null || f.purchasedTo != null) add("購置日期 ${range(f.purchasedFrom, f.purchasedTo)}")
+            if (f.expiresFrom != null || f.expiresTo != null) add("到期日 ${range(f.expiresFrom, f.expiresTo)}")
+            f.minQuantity?.let { add("數量 ≥ $it") }
+        }
+        _state.update {
+            it.copy(
+                keyword = f.keyword.orEmpty(),
+                location = f.location,
+                custodian = f.custodian,
+                expiry = ExpiryFilter.entries.firstOrNull { e -> e.apiValue == f.expiryStatus } ?: ExpiryFilter.ALL,
+                agentExtra = if (labels.isEmpty()) null else extra,
+                agentExtraLabel = labels.takeIf { l -> l.isNotEmpty() }?.joinToString("、"),
+                mode = PickMode.VIEW,
+            )
+        }
+        refresh()
+    }
+
+    private fun range(from: String?, to: String?) =
+        "${AssetFormat.isoToDisplay(from)}～${AssetFormat.isoToDisplay(to)}"
 
     /** 載入「存放位置」「保管人」選項（篩選用）。 */
     fun loadOptions() = viewModelScope.launch {

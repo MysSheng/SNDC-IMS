@@ -21,6 +21,16 @@ class AssetRepository(private val api: AssetApi, private val json: Json) {
         val locationId: String? = null,
         val managerId: String? = null,
         val expiryStatus: String? = null,
+        // 以下條件目前只由 AI 助理設定
+        val itemName: String? = null,
+        val assetCode: String? = null,
+        val techMission: String? = null,
+        val color: String? = null,
+        val purchasedFrom: String? = null,
+        val purchasedTo: String? = null,
+        val expiresFrom: String? = null,
+        val expiresTo: String? = null,
+        val minQuantity: Int? = null,
     )
 
     suspend fun search(filters: Filters, page: Int, size: Int = PAGE_SIZE): ApiResult<PageDto<AssetDto>> =
@@ -30,6 +40,15 @@ class AssetRepository(private val api: AssetApi, private val json: Json) {
                 locationId = filters.locationId,
                 managerId = filters.managerId,
                 expiryStatus = filters.expiryStatus,
+                itemName = filters.itemName,
+                assetCode = filters.assetCode,
+                techMission = filters.techMission,
+                color = filters.color,
+                purchasedFrom = filters.purchasedFrom,
+                purchasedTo = filters.purchasedTo,
+                expiresFrom = filters.expiresFrom,
+                expiresTo = filters.expiresTo,
+                minQuantity = filters.minQuantity,
                 page = page,
                 size = size,
             )

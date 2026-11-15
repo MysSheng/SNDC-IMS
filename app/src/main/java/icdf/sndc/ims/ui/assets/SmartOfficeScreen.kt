@@ -4,6 +4,7 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -39,6 +40,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.runtime.saveable.rememberSaveable
+import icdf.sndc.ims.ui.agent.AgentAvatar
+import icdf.sndc.ims.ui.agent.AgentChatDialog
+import icdf.sndc.ims.ui.agent.AgentChatViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import android.widget.Toast
 import icdf.sndc.ims.data.remote.AssetDto
@@ -47,6 +53,7 @@ import icdf.sndc.ims.data.remote.AssetDto
 @Composable
 fun SmartOfficeScreen(
     viewModel: AssetListViewModel,
+    agentViewModel: AgentChatViewModel,
     onBack: () -> Unit,
     onOpen: (String) -> Unit,
     onCreate: () -> Unit,
@@ -57,6 +64,13 @@ fun SmartOfficeScreen(
     var crudMenu by remember { mutableStateOf(false) }
     var showFilters by remember { mutableStateOf(false) }
     var filterPicker by remember { mutableStateOf<String?>(null) }
+    var showAgent by rememberSaveable { mutableStateOf(false) }
+    val agentState by agentViewModel.state.collectAsStateWithLifecycle()
+
+    // AI 助理完成修改／刪除後，重新載入清單
+    LaunchedEffect(agentState.dataVersion) {
+        if (agentState.dataVersion > 0) viewModel.refresh()
+    }
 
     // 每次回到此畫面（例如新增、修改後返回）都重新載入，確保顯示資料庫中的最新內容
     LaunchedEffect(Unit) {
@@ -70,6 +84,7 @@ fun SmartOfficeScreen(
         }
     }
 
+    Box(Modifier.fillMaxSize()) {
     Column(Modifier.fillMaxSize().safeDrawingPadding().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             TextButton(onClick = onBack) { Text("← 首頁") }
@@ -110,6 +125,14 @@ fun SmartOfficeScreen(
                 TextButton(onClick = viewModel::clearFilters) { Text("清除全部條件") }
             }
         }
+        state.agentExtraLabel?.let { label ->
+            Surface(color = MaterialTheme.colorScheme.tertiaryContainer, shape = MaterialTheme.shapes.small) {
+                Row(Modifier.fillMaxWidth().padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text("小管家設定的條件：$label", modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodySmall)
+                    TextButton(onClick = viewModel::clearFilters) { Text("清除") }
+                }
+            }
+        }
         if (showFilters) {
             FilterPanel(
                 state = state,
@@ -147,7 +170,10 @@ fun SmartOfficeScreen(
                         if (!state.hasFilters) "目前沒有資產紀錄。點右上角「CRUD」→「新增資產」開始建立。" else "找不到符合條件的資產。",
                         modifier = Modifier.align(Alignment.Center),
                     )
-                else -> LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                else -> LazyColumn(
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                    contentPadding = PaddingValues(bottom = 96.dp),   // 避免最後一筆被小管家按鈕擋住
+                ) {
                     if (state.error != null) {
                         item { Text(state.error!!, color = MaterialTheme.colorScheme.error) }
                     }
@@ -170,6 +196,26 @@ fun SmartOfficeScreen(
                 }
             }
         }
+    }
+
+    // 小管家（AI 助理）按鈕
+    Surface(
+        onClick = { showAgent = true },
+        shape = CircleShape,
+        shadowElevation = 6.dp,
+        modifier = Modifier.align(Alignment.BottomEnd).safeDrawingPadding().padding(20.dp),
+    ) {
+        AgentAvatar(60)
+    }
+    }
+
+    if (showAgent) {
+        AgentChatDialog(
+            viewModel = agentViewModel,
+            onDismiss = { showAgent = false },
+            onOpenAsset = { id -> showAgent = false; onOpen(id) },
+            onShowInList = { f -> showAgent = false; viewModel.applyAgentFilters(f) },
+        )
     }
 
     when (filterPicker) {
