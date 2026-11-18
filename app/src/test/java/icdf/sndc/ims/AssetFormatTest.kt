@@ -31,6 +31,19 @@ class AssetFormatTest {
         assertNotNull(AssetFormat.usefulLifeError("2.55"))
         assertNotNull(AssetFormat.usefulLifeError("0"))
         assertNotNull(AssetFormat.usefulLifeError("abc"))
+        // 使用年限改為選填
+        assertNull(AssetFormat.usefulLifeError(""))
+    }
+
+    @Test
+    fun moneyIsOptionalWithTwoDecimals() {
+        assertNull(AssetFormat.moneyError(""))
+        assertNull(AssetFormat.moneyError("1,990.00"))
+        assertEquals(1990.0, AssetFormat.parseMoney("1,990.00")!!, 0.0)
+        assertNotNull(AssetFormat.moneyError("-1"))
+        assertNotNull(AssetFormat.moneyError("1.234"))
+        assertNotNull(AssetFormat.moneyError("abc"))
+        assertEquals("650", AssetFormat.money(650.0))
     }
 
     @Test

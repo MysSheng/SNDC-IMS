@@ -9,6 +9,7 @@ import icdf.sndc.ims.common.TextNormalizer;
 import icdf.sndc.ims.config.AppProperties;
 import icdf.sndc.ims.location.LocationService;
 import icdf.sndc.ims.manager.ManagerService;
+import icdf.sndc.ims.period.PeriodService;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
@@ -48,6 +49,7 @@ public class AssetService {
     private final AssetRepository assetRepository;
     private final ManagerService managerService;
     private final LocationService locationService;
+    private final PeriodService periodService;
     private final AppProperties props;
     private final Clock clock;
 
@@ -58,10 +60,12 @@ public class AssetService {
     public static final int EXPIRING_SOON_DAYS = 90;
 
     public AssetService(AssetRepository assetRepository, ManagerService managerService,
-                        LocationService locationService, AppProperties props, Clock clock) {
+                        LocationService locationService, PeriodService periodService, AppProperties props,
+                        Clock clock) {
         this.assetRepository = assetRepository;
         this.managerService = managerService;
         this.locationService = locationService;
+        this.periodService = periodService;
         this.props = props;
         this.clock = clock;
     }
@@ -133,7 +137,8 @@ public class AssetService {
                 a.manager() == null ? null : a.manager().id(),
                 a.purchaseDate(), a.usefulLifeYears(),
                 a.location() == null ? null : a.location().id(),
-                a.color(), a.quantity(), a.description());
+                a.specification(), a.acquisitionType(), a.unit(), a.quantity(), a.valueTwd(), a.valueUsd(),
+                a.color(), a.description(), null, null);
     }
 
     private Specification<Asset> spec(AssetQuery q) {
@@ -146,6 +151,7 @@ public class AssetService {
         if (q.minQuantity() != null && q.minQuantity() < 1) {
             throw ApiException.invalidField("minQuantity", "minQuantity must be at least 1");
         }
+        PeriodService.validate(q.year(), q.quarter());
         AssetQuery normalized = new AssetQuery(
                 TextNormalizer.normalize(q.keyword()),
                 TextNormalizer.normalize(q.assetCode()),
@@ -159,7 +165,9 @@ public class AssetService {
                 q.purchasedTo(),
                 q.expiresFrom(),
                 q.expiresTo(),
-                q.minQuantity());
+                q.minQuantity(),
+                q.year(),
+                q.quarter());
         return AssetSpecifications.matching(normalized, today(), EXPIRING_SOON_DAYS);
     }
 
@@ -200,9 +208,20 @@ public class AssetService {
         asset.setPurchaseDate(req.purchaseDate());
         asset.setUsefulLifeYears(req.usefulLifeYears());
         asset.setExpectedExpiryDate(ExpiryCalculator.expectedExpiryDate(req.purchaseDate(), req.usefulLifeYears()));
-        asset.setColor(TextNormalizer.normalize(req.color()));
+        asset.setSpecification(TextNormalizer.normalize(req.specification()));
+        asset.setAcquisitionType(TextNormalizer.normalize(req.acquisitionType()));
+        asset.setUnit(TextNormalizer.normalize(req.unit()));
         asset.setQuantity(req.quantity() == null ? 1 : req.quantity());
+        asset.setValueTwd(req.valueTwd());
+        asset.setValueUsd(req.valueUsd());
+        asset.setColor(TextNormalizer.normalize(req.color()));
         asset.setDescription(TextNormalizer.normalize(req.description()));
+        if (req.periodYear() != null || req.periodQuarter() != null) {
+            if (req.periodYear() == null || req.periodQuarter() == null) {
+                throw ApiException.invalidField("periodQuarter", "Year and quarter must be provided together");
+            }
+            asset.addPeriod(periodService.getOrCreate(req.periodYear(), req.periodQuarter()));
+        }
     }
 
     private static String requireText(String raw, String field, String message) {

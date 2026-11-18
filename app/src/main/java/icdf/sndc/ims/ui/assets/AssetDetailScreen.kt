@@ -24,6 +24,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import icdf.sndc.ims.ui.common.tr
 
 @Composable
 fun AssetDetailScreen(
@@ -43,46 +44,51 @@ fun AssetDetailScreen(
         Modifier.fillMaxSize().safeDrawingPadding().verticalScroll(rememberScrollState()).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        TextButton(onClick = onBack) { Text("← 返回清單") }
+        TextButton(onClick = onBack) { Text(tr("← 返回清單", "← Back to list")) }
         val asset = state.asset
         when {
             state.loading && asset == null -> CircularProgressIndicator()
             asset == null -> {
-                Text(state.error ?: "找不到此資產。", color = MaterialTheme.colorScheme.error)
-                TextButton(onClick = viewModel::load) { Text("重試") }
+                Text(state.error ?: tr("找不到此資產。", "Asset not found."), color = MaterialTheme.colorScheme.error)
+                TextButton(onClick = viewModel::load) { Text(tr("重試", "Retry")) }
             }
             else -> {
                 Text(asset.itemName, style = MaterialTheme.typography.headlineSmall)
                 if (state.error != null) Text(state.error!!, color = MaterialTheme.colorScheme.error)
                 HorizontalDivider()
-                InfoRow("編號", asset.assetCode)
-                InfoRow("名稱", asset.itemName)
-                InfoRow("所屬技術團", asset.techMission)
-                InfoRow("購置日期", AssetFormat.isoToDisplay(asset.purchaseDate))
-                InfoRow("存放位置", asset.location?.name)
-                InfoRow("使用年限", AssetFormat.years(asset.usefulLifeYears).let { if (it.isEmpty()) null else "$it 年" })
-                InfoRow("預計到期日", AssetFormat.isoToDisplay(asset.expectedExpiryDate).ifEmpty { null }?.let {
+                InfoRow(tr("編號", "Asset code"), asset.assetCode)
+                InfoRow(tr("名稱", "Name"), asset.itemName)
+                InfoRow(tr("所屬技術團", "Mission"), asset.techMission)
+                InfoRow(tr("購置日期", "Purchased"), AssetFormat.isoToDisplay(asset.purchaseDate))
+                InfoRow(tr("存放位置", "Location"), asset.location?.name)
+                InfoRow(tr("使用年限", "Useful life"), AssetFormat.years(asset.usefulLifeYears).let { if (it.isEmpty()) null else tr("$it 年", "$it years") })
+                InfoRow(tr("預計到期日", "Expires"), AssetFormat.isoToDisplay(asset.expectedExpiryDate).ifEmpty { null }?.let {
                     when (asset.expiryStatus) {
-                        "EXPIRED" -> "$it（已過使用年限）"
-                        "EXPIRING_SOON" -> "$it（90 天內到期）"
+                        "EXPIRED" -> tr("$it（已過使用年限）", "$it (past useful life)")
+                        "EXPIRING_SOON" -> tr("$it（90 天內到期）", "$it (within 90 days)")
                         else -> it
                     }
                 })
-                InfoRow("保管人", asset.manager?.name)
-                InfoRow("數量", asset.quantity.toString())
-                InfoRow("顏色", asset.color)
-                InfoRow("備註", asset.description)
+                InfoRow(tr("保管人", "Custodian"), asset.manager?.name)
+                InfoRow(tr("數量", "Quantity"), asset.quantity.toString() + (asset.unit?.let { " $it" } ?: ""))
+                InfoRow(tr("規格及摘要", "Specification"), asset.specification)
+                InfoRow(tr("購置類型", "Acquisition"), asset.acquisitionType)
+                InfoRow(tr("價值（美金）", "Value (USD)"), AssetFormat.money(asset.valueUsd).ifEmpty { null })
+                InfoRow(tr("價值（台幣）", "Value (TWD)"), AssetFormat.money(asset.valueTwd).ifEmpty { null })
+                InfoRow(tr("盤點期別", "Periods"), asset.periods.joinToString("、") { it.label }.ifEmpty { null })
+                InfoRow(tr("顏色", "Color"), asset.color)
+                InfoRow(tr("備註", "Remarks"), asset.description)
                 HorizontalDivider()
                 // 室內導引：預留入口，未來從目前位置導引到資產的存放位置
                 Button(onClick = { onGuide(asset.location?.name) }, modifier = Modifier.fillMaxWidth()) {
-                    Text("導引")
+                    Text(tr("導引", "Guide me"))
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Button(onClick = onEdit) { Text("修改") }
+                    Button(onClick = onEdit) { Text(tr("修改", "Edit")) }
                     OutlinedButton(
                         onClick = viewModel::askDelete,
                         colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error),
-                    ) { Text("刪除") }
+                    ) { Text(tr("刪除", "Delete")) }
                 }
                 if (state.confirmDelete) {
                     DeleteConfirmDialog(asset, state.deleting, onConfirm = viewModel::delete, onDismiss = viewModel::dismissDelete)

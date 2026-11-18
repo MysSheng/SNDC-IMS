@@ -1,4 +1,4 @@
-# REST API 文件（Spring Boot 4.1，規格書 v1.5）
+# REST API 文件（Spring Boot 4.1，規格書 v1.6）
 
 - Base path：`/api/v1`
 - 正式環境 Base URL：`https://<電腦名稱>.<tailnet>.ts.net/api/v1`（經 Tailscale；後端本身只監聽 127.0.0.1:8080）
@@ -35,7 +35,9 @@
 | 409 | `LOCATION_NAME_DUPLICATE` | 位置名稱已存在 |
 | 409 | `DATA_CONFLICT` | 其他資料庫唯一性衝突 |
 | 404 | `ACTION_NOT_FOUND` | AI 待確認動作不存在、已過期（10 分鐘）、已執行，或屬於其他使用者 |
-| 503 | `AI_NOT_CONFIGURED` | 伺服器未設定 `GROQ_API_KEY`，或金鑰被 Groq 拒絕 |
+| 503 | `AI_NOT_CONFIGURED` | 伺服器沒有讀到 `GROQ_API_KEY` |
+| 503 | `AI_KEY_REJECTED` | 有讀到金鑰，但 Groq 回傳 401（金鑰無效或已撤銷） |
+| 503 | `AI_ACCESS_DENIED` | Groq 回傳 403，常見於伺服器電腦開著 VPN 或網路受限 |
 | 503 | `AI_BUSY` | Groq 使用量達上限（HTTP 429） |
 | 503 | `AI_UNAVAILABLE` | Groq 逾時或發生錯誤 |
 | 415 | `UNSUPPORTED_MEDIA_TYPE` | Content-Type 不是 JSON |
@@ -88,11 +90,16 @@ Token 為 HS256 JWT，有效期限由 `JWT_EXPIRATION` 設定（預設 12 小時
 | techMission | 所屬技術團 | string | ✔ | ≤ 100 |
 | purchaseDate | 購置日期 | date | ✔ | `YYYY-MM-DD`，年份 2000–2999（App 顯示為 `YYYY/MM/DD`） |
 | locationId | 存放位置 | UUID | ✔ | 必須存在 |
-| usefulLifeYears | 使用年限 | number | ✔ | > 0，最多一位小數，≤ 999.9 |
 | managerId | 保管人 | UUID | ✔ | 必須存在 |
+| usefulLifeYears | 使用年限 | number | | > 0，最多一位小數，≤ 999.9；未提供則不計算到期日 |
+| specification | 規格及摘要 | string | | ≤ 2000 |
+| acquisitionType | 購置類型 | string | | ≤ 100 |
+| unit | 單位 | string | | ≤ 20 |
 | quantity | 數量 | integer | | > 0，未提供時為 1 |
+| valueTwd, valueUsd | 價值（台幣／美金） | number | | ≥ 0，最多兩位小數 |
 | color | 顏色 | string | | ≤ 50 |
 | description | 備註 | string | | ≤ 2000 |
+| periodYear, periodQuarter | 盤點期別 | integer | | 兩者需同時提供；把資產加入該期別（不會移除既有期別） |
 
 所有字串都會經過正規化：Unicode NFKC、去除前後空白，空字串視為 null。
 
@@ -110,9 +117,15 @@ Token 為 HS256 JWT，有效期限由 `JWT_EXPIRATION` 設定（預設 12 小時
   "expectedExpiryDate": "2029-01-15",
   "expiryStatus": "VALID",
   "location": { "id": "uuid", "name": "第一辦公室" },
-  "color": "黑色",
+  "specification": "HP LaserJet Pro M404dw",
+  "acquisitionType": "當地採購",
+  "unit": "臺",
   "quantity": 1,
+  "valueTwd": null,
+  "valueUsd": 322.00,
+  "color": "黑色",
   "description": null,
+  "periods": [ { "year": 2026, "quarter": 3 } ],
   "createdAt": "2026-11-15T08:00:00Z",
   "updatedAt": "2026-11-15T08:00:00Z"
 }
@@ -127,7 +140,7 @@ Token 為 HS256 JWT，有效期限由 `JWT_EXPIRATION` 設定（預設 12 小時
 | `EXPIRED` | 已過使用年限（到期日 ≤ 今天） |
 | `EXPIRING_SOON` | 90 天內到期 |
 | `VALID` | 使用年限內 |
-| `null` | 缺少購置日期或使用年限（只會出現在 V2 之前的舊資料） |
+| `null` | 沒有使用年限（不計算到期日） |
 
 ### `POST /assets` → `201` AssetResponse
 
@@ -135,7 +148,9 @@ Token 為 HS256 JWT，有效期限由 `JWT_EXPIRATION` 設定（預設 12 小時
 
 | Query | 說明 |
 |---|---|
-| keyword | 名稱**或**編號部分符合（App 的搜尋框使用此參數） |
+| keyword | 名稱、編號或規格部分符合（App 的搜尋框使用此參數） |
+| year | 盤點期別年度：該年度任一季清單中的資產（同一筆只列一次） |
+| quarter | 盤點期別季度 1–4；必須搭配 `year`，否則 `400` |
 | assetCode | 完全符合 |
 | itemName | 部分符合 |
 | techMission, color | 完全符合 |
@@ -161,6 +176,51 @@ Token 為 HS256 JWT，有效期限由 `JWT_EXPIRATION` 設定（預設 12 小時
 
 ### `DELETE /assets/{id}` → `204`
 Soft Delete：設定 `deleted_at`，資料仍保留在資料庫中。
+
+## 盤點期別
+
+### `GET /periods` → `200`
+```json
+[ { "year": 2026, "quarter": 4, "label": "2026Q4", "assetCount": 120 } ]
+```
+新到舊排序；`assetCount` 為該期別中未刪除的資產筆數。App 以此建立「年度 → 季度」下拉選單。
+
+## 匯入與匯出（規格書第 4.6 節）
+
+### `POST /assets/import/preview`（`multipart/form-data`）→ `200` ImportPreview
+| Part | 說明 |
+|---|---|
+| file | `.xlsx`／`.xls`／`.csv`，上限 10 MB（超過回 `413 FILE_TOO_LARGE`） |
+| year, quarter | 盤點期別；未提供時從檔名判斷（例如 `清單_2026Q3.xlsx`），都沒有則 `400` |
+| techMission | 選填；未提供時從 Excel 標題判斷 |
+
+只檢查，不寫入。
+```json
+{
+  "token": "uuid 或 null（有錯誤時）",
+  "fileName": "ICT計畫_2026Q3.xlsx",
+  "year": 2026, "quarter": 3, "period": "2026Q3",
+  "techMission": "駐索馬利蘭技術團",
+  "totalRows": 120, "createCount": 115, "updateCount": 5, "restoreCount": 0,
+  "newLocations": ["第二辦公室"], "newCustodians": ["王小明"],
+  "errorCount": 0,
+  "errors": [ { "sheet": "ICT計畫", "row": 12, "assetCode": "A-1", "message": "缺少放置地點" } ],
+  "expiresAt": "2026-11-18T10:10:00Z"
+}
+```
+`errors` 最多列出 200 筆，`errorCount` 為總數。
+
+### `POST /assets/import/{token}/confirm` → `200`
+`{ "period": "2026Q3", "created": 115, "updated": 5, "restored": 0 }`。整批在同一個交易中寫入。token 不存在、已過期（10 分鐘）、已使用過或屬於其他使用者時回 `404 IMPORT_NOT_FOUND`。
+
+### `DELETE /assets/import/{token}` → `204`
+放棄尚未確認的匯入。
+
+### `POST /assets/export` → `200`（`.xlsx`）
+```json
+{ "ids": ["uuid", "uuid"], "year": 2026, "quarter": 3 }
+```
+`ids` 1–1000 筆；`year`／`quarter` 選填，只用於標題列與檔名。回傳主管清單格式的 `.xlsx`（每位保管人一個工作表，含小計），檔名在 `Content-Disposition`（`filename*=UTF-8''…`）。已刪除或不存在的 ID 會略過；全部都找不到時回 `404`。
 
 ## Locations
 

@@ -1,6 +1,7 @@
 package icdf.sndc.ims.asset;
 
 import icdf.sndc.ims.common.RefDto;
+import icdf.sndc.ims.period.PeriodDtos.PeriodRef;
 import jakarta.validation.constraints.DecimalMax;
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.Digits;
@@ -12,6 +13,7 @@ import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.util.List;
 import java.util.UUID;
 
 public final class AssetDtos {
@@ -20,7 +22,9 @@ public final class AssetDtos {
 
     /**
      * 新增與修改共用（PUT 為整筆取代）。
-     * 必填：編號、名稱、所屬技術團、購置日期、存放位置、使用年限、保管人。選填：顏色、備註；數量預設 1。
+     * 必填：編號、名稱、所屬技術團、保管人、購置日期、存放位置。
+     * 選填：使用年限（未填則不計算到期日）、規格及摘要、購置類型、單位、數量（預設 1）、台幣、美金、顏色、備註。
+     * periodYear／periodQuarter：選填，兩者需同時提供；會把資產加入該盤點期別（不會移除既有期別）。
      */
     public record AssetRequest(
             @NotBlank(message = "Asset code is required")
@@ -42,7 +46,6 @@ public final class AssetDtos {
             @NotNull(message = "Purchase date is required")
             LocalDate purchaseDate,
 
-            @NotNull(message = "Useful life years is required")
             @DecimalMin(value = "0", inclusive = false, message = "Useful life years must be greater than zero")
             @DecimalMax(value = "999.9", message = "Useful life years is too large")
             @Digits(integer = 3, fraction = 1, message = "Useful life years allows at most one decimal place")
@@ -51,15 +54,36 @@ public final class AssetDtos {
             @NotNull(message = "Location is required")
             UUID locationId,
 
-            @Size(max = 50, message = "Color must be at most 50 characters")
-            String color,
+            @Size(max = 2000, message = "Specification must be at most 2000 characters")
+            String specification,
+
+            @Size(max = 100, message = "Acquisition type must be at most 100 characters")
+            String acquisitionType,
+
+            @Size(max = 20, message = "Unit must be at most 20 characters")
+            String unit,
 
             /** 未提供時預設為 1。 */
             @Positive(message = "Quantity must be greater than zero")
             Integer quantity,
 
+            @DecimalMin(value = "0", message = "Value must not be negative")
+            @Digits(integer = 12, fraction = 2, message = "Value allows at most 12 digits and 2 decimal places")
+            BigDecimal valueTwd,
+
+            @DecimalMin(value = "0", message = "Value must not be negative")
+            @Digits(integer = 12, fraction = 2, message = "Value allows at most 12 digits and 2 decimal places")
+            BigDecimal valueUsd,
+
+            @Size(max = 50, message = "Color must be at most 50 characters")
+            String color,
+
             @Size(max = 2000, message = "Description must be at most 2000 characters")
-            String description
+            String description,
+
+            Integer periodYear,
+
+            Integer periodQuarter
     ) {}
 
     public record AssetResponse(
@@ -73,9 +97,15 @@ public final class AssetDtos {
             LocalDate expectedExpiryDate,
             ExpiryStatus expiryStatus,
             RefDto location,
-            String color,
+            String specification,
+            String acquisitionType,
+            String unit,
             int quantity,
+            BigDecimal valueTwd,
+            BigDecimal valueUsd,
+            String color,
             String description,
+            List<PeriodRef> periods,
             Instant createdAt,
             Instant updatedAt
     ) {
@@ -92,15 +122,24 @@ public final class AssetDtos {
                     expiry,
                     ExpiryStatus.of(expiry, today, soonDays),
                     a.getLocation() == null ? null : new RefDto(a.getLocation().getId(), a.getLocation().getName()),
-                    a.getColor(),
+                    a.getSpecification(),
+                    a.getAcquisitionType(),
+                    a.getUnit(),
                     a.getQuantity(),
+                    a.getValueTwd(),
+                    a.getValueUsd(),
+                    a.getColor(),
                     a.getDescription(),
+                    a.getPeriodsSorted().stream().map(PeriodRef::of).toList(),
                     a.getCreatedAt(),
                     a.getUpdatedAt());
         }
     }
 
-    /** GET /assets 的查詢條件，全部選填且以 AND 組合。keyword 會同時比對名稱與編號（部分符合）。 */
+    /**
+     * GET /assets 的查詢條件，全部選填且以 AND 組合。keyword 會同時比對名稱、編號與規格（部分符合）。
+     * year／quarter：盤點期別；只給 year 時為該年度任一季的清單，quarter 需搭配 year。
+     */
     public record AssetQuery(
             String keyword,
             String assetCode,
@@ -114,13 +153,24 @@ public final class AssetDtos {
             LocalDate purchasedTo,
             LocalDate expiresFrom,
             LocalDate expiresTo,
-            Integer minQuantity
+            Integer minQuantity,
+            Integer year,
+            Integer quarter
     ) {
         /** 是否至少有一個條件（批次修改／刪除時必須有條件，避免誤刪全部）。 */
         public boolean hasAnyCondition() {
             return keyword != null || assetCode != null || itemName != null || techMission != null || color != null
                     || managerId != null || locationId != null || expiryStatus != null || purchasedFrom != null
-                    || purchasedTo != null || expiresFrom != null || expiresTo != null || minQuantity != null;
+                    || purchasedTo != null || expiresFrom != null || expiresTo != null || minQuantity != null
+                    || year != null;
         }
     }
+
+    /** 勾選匯出：最多 1000 筆。year／quarter 選填，只用於標題列。 */
+    public record ExportRequest(
+            @jakarta.validation.constraints.NotEmpty(message = "Select at least one asset")
+            @Size(max = 1000, message = "At most 1000 assets per export")
+            List<@NotNull UUID> ids,
+            Integer year,
+            Integer quarter) {}
 }

@@ -16,6 +16,7 @@ import icdf.sndc.ims.ui.assets.AssetDetailScreen
 import icdf.sndc.ims.ui.assets.AssetDetailViewModel
 import icdf.sndc.ims.ui.assets.AssetFormScreen
 import icdf.sndc.ims.ui.assets.AssetFormViewModel
+import icdf.sndc.ims.ui.assets.AssetImportViewModel
 import icdf.sndc.ims.ui.assets.AssetListViewModel
 import icdf.sndc.ims.ui.assets.SmartOfficeScreen
 import icdf.sndc.ims.ui.auth.LoginScreen
@@ -24,6 +25,7 @@ import icdf.sndc.ims.ui.auth.RegisterScreen
 import icdf.sndc.ims.ui.auth.RegisterViewModel
 import icdf.sndc.ims.ui.home.HomeScreen
 import icdf.sndc.ims.ui.home.PlaceholderScreen
+import icdf.sndc.ims.ui.common.tr
 
 private object Routes {
     const val LOGIN = "login"
@@ -32,13 +34,19 @@ private object Routes {
     const val SMART_OFFICE = "smart-office"
     const val NAVIGATION = "navigation"
     const val ASSET_DETAIL = "asset/{id}"
-    const val ASSET_FORM = "asset-form?id={id}"
+    const val ASSET_FORM = "asset-form?id={id}&year={year}&quarter={quarter}"
     const val GUIDE = "guide?location={location}"
 
     fun guide(location: String?) = if (location == null) "guide" else "guide?location=${android.net.Uri.encode(location)}"
 
     fun assetDetail(id: String) = "asset/$id"
-    fun assetForm(id: String? = null) = if (id == null) "asset-form" else "asset-form?id=$id"
+    fun assetForm(id: String? = null, year: Int? = null, quarter: Int? = null): String {
+        val params = buildList {
+            id?.let { add("id=$it") }
+            if (year != null && quarter != null) { add("year=$year"); add("quarter=$quarter") }
+        }
+        return if (params.isEmpty()) "asset-form" else "asset-form?" + params.joinToString("&")
+    }
 }
 
 @Composable
@@ -80,12 +88,15 @@ fun SndcNavHost(container: AppContainer) {
         composable(Routes.SMART_OFFICE) {
             val vm = viewModel { AssetListViewModel(container.assetRepository) }
             val agentVm = viewModel { AgentChatViewModel(container.agentRepository) }
+            val importVm = viewModel { AssetImportViewModel(container.assetRepository) }
             SmartOfficeScreen(
                 viewModel = vm,
                 agentViewModel = agentVm,
+                importViewModel = importVm,
                 onBack = { nav.popBackStack() },
                 onOpen = { id -> nav.navigate(Routes.assetDetail(id)) },
-                onCreate = { nav.navigate(Routes.assetForm()) },
+                // 新增時帶入清單目前選的盤點期別（若已選到季度）
+                onCreate = { nav.navigate(Routes.assetForm(year = vm.state.value.year, quarter = vm.state.value.quarter)) },
                 onEdit = { id -> nav.navigate(Routes.assetForm(id)) },
             )
         }
@@ -109,18 +120,24 @@ fun SndcNavHost(container: AppContainer) {
         ) { entry ->
             val location = entry.arguments?.getString("location")
             PlaceholderScreen(
-                title = "室內導引",
-                message = "室內導引功能尚未開放。\n\n未來將可從你目前所在的房間或地點，導引你前往" +
-                    (if (location.isNullOrBlank()) "資產的存放位置。" else "「$location」。"),
+                title = tr("室內導引", "Indoor guidance"),
+                message = tr("室內導引功能尚未開放。\n\n未來將可從你目前所在的房間或地點，導引你前往", "Indoor guidance is not available yet.\n\nIt will guide you from where you are to ") +
+                    (if (location.isNullOrBlank()) tr("資產的存放位置。", "the asset's location.") else "「$location」。"),
                 onBack = { nav.popBackStack() },
             )
         }
         composable(
             Routes.ASSET_FORM,
-            arguments = listOf(navArgument("id") { type = NavType.StringType; nullable = true; defaultValue = null }),
+            arguments = listOf(
+                navArgument("id") { type = NavType.StringType; nullable = true; defaultValue = null },
+                navArgument("year") { type = NavType.StringType; nullable = true; defaultValue = null },
+                navArgument("quarter") { type = NavType.StringType; nullable = true; defaultValue = null },
+            ),
         ) { entry ->
             val id = entry.arguments?.getString("id")
-            val vm = viewModel { AssetFormViewModel(container.assetRepository, id) }
+            val year = entry.arguments?.getString("year")?.toIntOrNull()
+            val quarter = entry.arguments?.getString("quarter")?.toIntOrNull()
+            val vm = viewModel { AssetFormViewModel(container.assetRepository, id, year, quarter) }
             AssetFormScreen(
                 viewModel = vm,
                 onBack = { nav.popBackStack() },
@@ -129,8 +146,8 @@ fun SndcNavHost(container: AppContainer) {
         }
         composable(Routes.NAVIGATION) {
             PlaceholderScreen(
-                title = "智慧導航系統",
-                message = "功能尚未開放。",
+                title = tr("智慧導航系統", "Smart Navigation"),
+                message = tr("功能尚未開放。", "Not available yet."),
                 onBack = { nav.popBackStack() },
             )
         }

@@ -25,6 +25,8 @@ data class AgentFiltersDto(
     val expiresFrom: String? = null,
     val expiresTo: String? = null,
     val minQuantity: Int? = null,
+    val year: Int? = null,
+    val quarter: Int? = null,
 )
 
 @Serializable

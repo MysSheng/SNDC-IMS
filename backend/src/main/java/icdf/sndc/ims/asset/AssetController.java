@@ -53,11 +53,13 @@ public class AssetController {
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate expiresFrom,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate expiresTo,
             @RequestParam(required = false) Integer minQuantity,
+            @RequestParam(required = false) Integer year,
+            @RequestParam(required = false) Integer quarter,
             @RequestParam(required = false) Integer page,
             @RequestParam(required = false) Integer size,
             @RequestParam(required = false) String sort) {
         AssetQuery query = new AssetQuery(keyword, assetCode, itemName, techMission, color, managerId, locationId,
-                expiryStatus, purchasedFrom, purchasedTo, expiresFrom, expiresTo, minQuantity);
+                expiryStatus, purchasedFrom, purchasedTo, expiresFrom, expiresTo, minQuantity, year, quarter);
         return assetService.search(query, page, size, sort);
     }
 

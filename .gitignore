@@ -21,7 +21,18 @@ local.properties
 /backend/out/
 *.log
 
+# --- Kotlin 2 編譯器暫存 ---
+.kotlin/
+
+# --- Claude 桌面 App 的輸出資料夾（非專案內容；規格書正本在 docs/） ---
+/Claude outputs/
+
 # --- Secrets：絕不提交 ---
 .env
 .env.*
 !.env.example
+
+# --- 財產清單（含保管人姓名等個資）：只放在團部電腦，不上傳公開 GitHub ---
+*.xlsx
+*.xls
+*.csv

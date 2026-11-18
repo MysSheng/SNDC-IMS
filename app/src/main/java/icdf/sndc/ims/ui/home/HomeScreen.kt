@@ -15,6 +15,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import icdf.sndc.ims.ui.common.LanguageToggle
+import icdf.sndc.ims.ui.common.tr
 
 /** 規格書第 8.2 節：登入後顯示兩個系統入口。 */
 @Composable
@@ -24,11 +26,12 @@ fun HomeScreen(username: String, onOpenSmartOffice: () -> Unit, onOpenNavigation
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Text("你好，$username", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
-            TextButton(onClick = onLogout) { Text("登出") }
+            Text(tr("你好，$username", "Hello, $username"), style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
+            LanguageToggle()
+            TextButton(onClick = onLogout) { Text(tr("登出", "Log out")) }
         }
-        EntryCard("智慧辦公室管理系統", "資產清冊：新增、查詢、修改、刪除", onOpenSmartOffice)
-        EntryCard("智慧導航系統", "功能尚未開放", onOpenNavigation)
+        EntryCard(tr("智慧辦公室管理系統", "Smart Office"), tr("資產清冊：新增、查詢、修改、刪除", "Asset register: create, search, edit, delete"), onOpenSmartOffice)
+        EntryCard(tr("智慧導航系統", "Smart Navigation"), tr("功能尚未開放", "Not available yet"), onOpenNavigation)
     }
 }
 
@@ -49,7 +52,7 @@ fun PlaceholderScreen(title: String, message: String, onBack: () -> Unit) {
         modifier = Modifier.fillMaxSize().safeDrawingPadding().padding(24.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        TextButton(onClick = onBack) { Text("← 返回") }
+        TextButton(onClick = onBack) { Text(tr("← 返回", "← Back")) }
         Text(title, style = MaterialTheme.typography.headlineSmall)
         Text(message, style = MaterialTheme.typography.bodyLarge)
     }

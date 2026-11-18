@@ -21,6 +21,11 @@ spring:
   flyway:
     enabled: true
     locations: classpath:db/migration
+  servlet:
+    multipart:
+      # Excel／CSV 匯入上限（規格書第 4.6 節）
+      max-file-size: 10MB
+      max-request-size: 11MB
 server:
   # 只監聽本機；手機經 tailscale serve 以 HTTPS 轉發進來（規格書第 2.6 節）
   address: ${SERVER_ADDRESS:127.0.0.1}

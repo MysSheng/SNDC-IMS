@@ -37,6 +37,12 @@ public class GroqLlmClient implements LlmClient {
         this.props = props;
         this.mapper = mapper;
         this.http = HttpClient.newBuilder().connectTimeout(props.timeout()).build();
+        // 啟動時顯示設定狀態，方便排查（不顯示金鑰內容）
+        if (props.configured()) {
+            log.info("AI 助理：已讀取 GROQ_API_KEY（{} 個字元），模型 {}", props.groqApiKey().strip().length(), props.groqModel());
+        } else {
+            log.warn("AI 助理：未讀取到 GROQ_API_KEY，AI 查詢將回傳 AI_NOT_CONFIGURED。請確認 backend/.env 並重新啟動後端。");
+        }
     }
 
     @JsonIgnoreProperties(ignoreUnknown = true)
@@ -57,7 +63,7 @@ public class GroqLlmClient implements LlmClient {
         String body = mapper.writeValueAsString(requestBody(systemPrompt, turns));
         HttpRequest request = HttpRequest.newBuilder(URI.create(props.groqBaseUrl() + "/chat/completions"))
                 .timeout(props.timeout())
-                .header("Authorization", "Bearer " + props.groqApiKey())
+                .header("Authorization", "Bearer " + props.groqApiKey().strip())
                 .header("Content-Type", "application/json")
                 .POST(HttpRequest.BodyPublishers.ofString(body, StandardCharsets.UTF_8))
                 .build();
@@ -74,8 +80,15 @@ public class GroqLlmClient implements LlmClient {
             throw unavailable("AI request was interrupted");
         }
         int status = response.statusCode();
-        if (status == 401 || status == 403) {
-            throw new ApiException(HttpStatus.SERVICE_UNAVAILABLE, "AI_NOT_CONFIGURED", "GROQ_API_KEY was rejected by Groq");
+        if (status == 401) {
+            // 有讀到金鑰，但 Groq 不接受（無效、複製錯誤或已撤銷）——與「沒有設定」分開回報
+            log.warn("Groq rejected the API key (HTTP 401)");
+            throw new ApiException(HttpStatus.SERVICE_UNAVAILABLE, "AI_KEY_REJECTED", "GROQ_API_KEY was rejected by Groq");
+        }
+        if (status == 403) {
+            // 金鑰以外的拒絕：常見於使用 VPN、所在地區或網路受限制
+            log.warn("Groq denied access (HTTP 403): {}", truncate(response.body()));
+            throw new ApiException(HttpStatus.SERVICE_UNAVAILABLE, "AI_ACCESS_DENIED", "Groq denied access from this network");
         }
         if (status == 429) {
             throw new ApiException(HttpStatus.SERVICE_UNAVAILABLE, "AI_BUSY", "AI service rate limit reached");

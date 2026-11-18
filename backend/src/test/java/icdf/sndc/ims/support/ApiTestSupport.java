@@ -29,6 +29,8 @@ public abstract class ApiTestSupport {
 
     protected void cleanDatabase() {
         jdbc.update("DELETE FROM asset_images");
+        jdbc.update("DELETE FROM asset_periods");
+        jdbc.update("DELETE FROM inventory_periods");
         jdbc.update("DELETE FROM assets");
         jdbc.update("DELETE FROM managers");
         jdbc.update("DELETE FROM locations");
@@ -67,7 +69,7 @@ public abstract class ApiTestSupport {
         return v == null ? null : v.toString();
     }
 
-    /** 測試用的極簡 JSON 序列化（只支援字串、數字、null），避免測試綁定特定 Jackson 版本。 */
+    /** 測試用的極簡 JSON 序列化（只支援字串、數字、布林、null 與清單），避免測試綁定特定 Jackson 版本。 */
     protected static String toJson(Map<?, ?> map) {
         StringBuilder sb = new StringBuilder("{");
         for (Map.Entry<?, ?> e : map.entrySet()) {
@@ -75,15 +77,27 @@ public abstract class ApiTestSupport {
                 sb.append(',');
             }
             sb.append('"').append(e.getKey()).append("\":");
-            Object v = e.getValue();
-            if (v == null) {
-                sb.append("null");
-            } else if (v instanceof Number) {
-                sb.append(v);
-            } else {
-                sb.append('"').append(v.toString().replace("\\", "\\\\").replace("\"", "\\\"")).append('"');
-            }
+            appendValue(sb, e.getValue());
         }
         return sb.append('}').toString();
+    }
+
+    private static void appendValue(StringBuilder sb, Object v) {
+        if (v == null) {
+            sb.append("null");
+        } else if (v instanceof Number || v instanceof Boolean) {
+            sb.append(v);
+        } else if (v instanceof java.util.Collection<?> list) {
+            sb.append('[');
+            boolean first = true;
+            for (Object item : list) {
+                if (!first) sb.append(',');
+                appendValue(sb, item);
+                first = false;
+            }
+            sb.append(']');
+        } else {
+            sb.append('"').append(v.toString().replace("\\", "\\\\").replace("\"", "\\\"")).append('"');
+        }
     }
 }

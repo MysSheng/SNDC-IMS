@@ -223,9 +223,10 @@ class AgentApiIntegrationTest extends ApiTestSupport {
 
     private static final List<String> FILTER_KEYS = List.of("keyword", "assetCode", "itemName", "techMission", "color",
             "locationName", "custodianName", "expiryStatus", "purchasedFrom", "purchasedTo", "expiresFrom", "expiresTo",
-            "minQuantity");
+            "minQuantity", "year", "quarter");
     private static final List<String> CHANGE_KEYS = List.of("assetCode", "itemName", "techMission", "color",
-            "description", "locationName", "custodianName", "purchaseDate", "usefulLifeYears", "quantity");
+            "description", "locationName", "custodianName", "purchaseDate", "usefulLifeYears", "quantity",
+            "specification", "unit");
 
     private static String filters(String... kv) {
         return obj(FILTER_KEYS, kv);

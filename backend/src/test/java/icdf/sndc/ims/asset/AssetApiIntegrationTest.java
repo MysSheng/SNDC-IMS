@@ -91,7 +91,7 @@ class AssetApiIntegrationTest extends ApiTestSupport {
 
     @Test
     void requiredFieldsAreEnforced() throws Exception {
-        for (String field : new String[]{"assetCode", "itemName", "techMission", "purchaseDate", "locationId", "usefulLifeYears", "managerId"}) {
+        for (String field : new String[]{"assetCode", "itemName", "techMission", "purchaseDate", "locationId", "managerId"}) {
             Map<String, Object> body = asset("A020", "印表機", 1, null, office1);
             body.remove(field);
             postJson("/api/v1/assets", body)
@@ -115,8 +115,97 @@ class AssetApiIntegrationTest extends ApiTestSupport {
         String json = postJson("/api/v1/assets", body)
                 .andExpect(status().isCreated())
                 .andReturn().getResponse().getContentAsString();
-        assertThat(json).doesNotContain("brand").doesNotContain("category").doesNotContain("unit")
-                .doesNotContain("model").doesNotContain("specification").doesNotContain("deletedAt");
+        assertThat(json).doesNotContain("brand").doesNotContain("category")
+                .doesNotContain("\"model\"").doesNotContain("deletedAt");
+    }
+
+    @Test
+    void usefulLifeIsOptionalAndThenThereIsNoExpiry() throws Exception {
+        Map<String, Object> body = asset("A023", "冷氣機", 1, null, office1);
+        body.remove("usefulLifeYears");
+        postJson("/api/v1/assets", body)
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.usefulLifeYears").doesNotExist())
+                .andExpect(jsonPath("$.expectedExpiryDate").doesNotExist())
+                .andExpect(jsonPath("$.expiryStatus").doesNotExist());
+        perform(get("/api/v1/assets").param("expiryStatus", "EXPIRED")).andExpect(jsonPath("$.totalItems").value(0));
+    }
+
+    @Test
+    void excelFieldsAreStoredAndSearchable() throws Exception {
+        Map<String, Object> body = asset("301200304-0001", "冷氣機", 1, null, office1);
+        body.put("specification", "SAMSUNG AR18KCF 1.5噸分離式冷氣機");
+        body.put("acquisitionType", "當地採購");
+        body.put("unit", "套");
+        body.put("valueUsd", 650);
+        body.put("valueTwd", 19500);
+        postJson("/api/v1/assets", body)
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.specification").value("SAMSUNG AR18KCF 1.5噸分離式冷氣機"))
+                .andExpect(jsonPath("$.acquisitionType").value("當地採購"))
+                .andExpect(jsonPath("$.unit").value("套"))
+                .andExpect(jsonPath("$.valueUsd").value(650))
+                .andExpect(jsonPath("$.periods.length()").value(0));
+        // 關鍵字也會比對規格
+        perform(get("/api/v1/assets").param("keyword", "SAMSUNG")).andExpect(jsonPath("$.totalItems").value(1));
+        body.put("assetCode", "A024");
+        body.put("valueUsd", -1);
+        postJson("/api/v1/assets", body)
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.details[0].field").value("valueUsd"));
+    }
+
+    @Test
+    void periodsFilterTheListByYearThenQuarter() throws Exception {
+        Map<String, Object> q3 = asset("P001", "冷氣機", 1, null, office1);
+        q3.put("periodYear", 2026);
+        q3.put("periodQuarter", 3);
+        String id = read(postJson("/api/v1/assets", q3)
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.periods[0].year").value(2026))
+                .andExpect(jsonPath("$.periods[0].quarter").value(3)), "$.id");
+        Map<String, Object> q1 = asset("P002", "印表機", 1, null, office1);
+        q1.put("periodYear", 2025);
+        q1.put("periodQuarter", 1);
+        postJson("/api/v1/assets", q1).andExpect(status().isCreated());
+        postJson("/api/v1/assets", asset("P003", "水壺", 1, null, office1)).andExpect(status().isCreated());
+
+        // 同一筆加入第二個期別（PUT 帶期別只會新增，不會移除）
+        q3.put("periodYear", 2026);
+        q3.put("periodQuarter", 4);
+        perform(put("/api/v1/assets/" + id).contentType(MediaType.APPLICATION_JSON).content(toJson(q3)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.periods.length()").value(2));
+
+        perform(get("/api/v1/assets")).andExpect(jsonPath("$.totalItems").value(3));
+        // 2026 年有 Q3、Q4 兩季，但同一筆資產只列一次
+        perform(get("/api/v1/assets").param("year", "2026")).andExpect(jsonPath("$.totalItems").value(1));
+        perform(get("/api/v1/assets").param("year", "2026").param("quarter", "3"))
+                .andExpect(jsonPath("$.items[0].assetCode").value("P001"));
+        perform(get("/api/v1/assets").param("year", "2026").param("quarter", "1"))
+                .andExpect(jsonPath("$.totalItems").value(0));
+        perform(get("/api/v1/assets").param("year", "2025")).andExpect(jsonPath("$.totalItems").value(1));
+        perform(get("/api/v1/assets").param("quarter", "3"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.details[0].field").value("year"));
+
+        perform(get("/api/v1/periods"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(3))
+                .andExpect(jsonPath("$[0].label").value("2026Q4"))
+                .andExpect(jsonPath("$[0].assetCount").value(1))
+                .andExpect(jsonPath("$[2].label").value("2025Q1"));
+
+        Map<String, Object> half = asset("P004", "水壺", 1, null, office1);
+        half.put("periodYear", 2026);
+        postJson("/api/v1/assets", half).andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void rejectsDuplicateCustodianName() throws Exception {
+        postJson("/api/v1/managers", Map.of("displayName", "李大豪"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("MANAGER_NAME_DUPLICATE"));
     }
 
     @Test

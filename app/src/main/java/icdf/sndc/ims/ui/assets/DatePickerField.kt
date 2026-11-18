@@ -18,6 +18,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import java.time.LocalDate
+import icdf.sndc.ims.ui.common.tr
 
 /** 年份限制 2000–2999（購置日期格式 2xxx/xx/xx）。 */
 private val PURCHASE_YEARS = 2000..2999
@@ -34,7 +35,7 @@ fun DatePickerField(label: String, value: String, error: String?, enabled: Boole
     Column(Modifier.fillMaxWidth()) {
         Text(label, style = MaterialTheme.typography.labelLarge)
         OutlinedButton(onClick = { open = true }, enabled = enabled, modifier = Modifier.fillMaxWidth()) {
-            Text(value.ifBlank { "點選以選擇日期" }, modifier = Modifier.fillMaxWidth())
+            Text(value.ifBlank { tr("點選以選擇日期", "Tap to pick a date") }, modifier = Modifier.fillMaxWidth())
         }
         if (error != null) {
             Text(error, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
@@ -59,9 +60,9 @@ fun DatePickerField(label: String, value: String, error: String?, enabled: Boole
                         open = false
                     },
                     enabled = state.selectedDateMillis != null,
-                ) { Text("確定") }
+                ) { Text(tr("確定", "OK")) }
             },
-            dismissButton = { TextButton(onClick = { open = false }) { Text("取消") } },
+            dismissButton = { TextButton(onClick = { open = false }) { Text(tr("取消", "Cancel")) } },
         ) {
             DatePicker(state = state)
         }

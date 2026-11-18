@@ -7,7 +7,10 @@ import icdf.sndc.ims.data.remote.AgentResponseDto
 import icdf.sndc.ims.data.remote.ApiResult
 import icdf.sndc.ims.data.remote.ChatTurnDto
 import icdf.sndc.ims.data.remote.PendingActionDto
+import icdf.sndc.ims.ui.common.AppLanguage
+import icdf.sndc.ims.ui.common.I18n
 import icdf.sndc.ims.ui.common.toUserMessage
+import icdf.sndc.ims.ui.common.tr
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -23,7 +26,7 @@ data class ChatMessage(
 )
 
 data class AgentChatUiState(
-    val messages: List<ChatMessage> = listOf(ChatMessage(0, false, AgentChatViewModel.GREETING)),
+    val messages: List<ChatMessage> = listOf(ChatMessage(0, false, AgentChatViewModel.greeting())),
     val input: String = "",
     val sending: Boolean = false,
     /** 非 null 時顯示確認視窗（修改／刪除）。 */
@@ -91,7 +94,7 @@ class AgentChatViewModel(private val repo: AgentRepository) : ViewModel() {
         val action = _state.value.confirming ?: return
         _state.update { it.copy(confirming = null) }
         markHandled(action.id)
-        append(ChatMessage(nextId++, false, "已取消，沒有變更任何資料。"))
+        append(ChatMessage(nextId++, false, tr("已取消，沒有變更任何資料。", "Cancelled. Nothing was changed.")))
         history.add(ChatTurnDto("assistant", "使用者取消了此動作，沒有變更任何資料。"))
         viewModelScope.launch { repo.cancel(action.id) }
     }
@@ -121,8 +124,18 @@ class AgentChatViewModel(private val repo: AgentRepository) : ViewModel() {
     }
 
     companion object {
-        const val GREETING = "我可以怎麼協助你？\n你可以用一般的說法告訴我想找什麼、想統計什麼，或要修改、刪除哪些資產。"
-        val EXAMPLES = listOf(
+        fun greeting() = tr(
+            "我可以怎麼協助你？\n你可以用一般的說法告訴我想找什麼、想統計什麼，或要修改、刪除哪些資產。",
+            "How can I help?\nTell me in plain words what to find or count, or which assets to edit or delete.",
+        )
+
+        /** 範例問題（點選即送出）；英文介面時顯示英文範例，後端可理解中英文。 */
+        val EXAMPLES: List<String> get() = if (I18n.language == AppLanguage.EN) listOf(
+            "Assets kept by 李大維 that are about to expire",
+            "How many air conditioners do we have?",
+            "Which items are duplicated?",
+            "Rename asset 60109-0003 to faucet",
+        ) else listOf(
             "找李大維管理且快要過期的資產",
             "我們有多少台冷氣？",
             "有哪些物品有重複？",

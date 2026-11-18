@@ -26,6 +26,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import icdf.sndc.ims.data.remote.RefDto
+import icdf.sndc.ims.ui.common.tr
 
 /** 看起來像欄位的選擇按鈕，點選後開啟選單。 */
 @Composable
@@ -33,7 +34,7 @@ fun SelectField(label: String, value: RefDto?, error: String?, enabled: Boolean,
     Column(Modifier.fillMaxWidth()) {
         Text(label, style = MaterialTheme.typography.labelLarge)
         OutlinedButton(onClick = onClick, enabled = enabled, modifier = Modifier.fillMaxWidth()) {
-            Text(value?.name ?: "點選以選擇", modifier = Modifier.fillMaxWidth())
+            Text(value?.name ?: tr("點選以選擇", "Tap to select"), modifier = Modifier.fillMaxWidth())
         }
         if (error != null) {
             Text(error, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
@@ -59,7 +60,7 @@ fun OptionPickerDialog(
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 if (options.isEmpty()) {
-                    Text("目前沒有任何選項，請在下方新增。")
+                    Text(tr("目前沒有任何選項，請在下方新增。", "No options yet. Add one below."))
                 } else {
                     LazyColumn(Modifier.heightIn(max = 280.dp)) {
                         items(options, key = { it.id }) { option ->
@@ -84,10 +85,10 @@ fun OptionPickerDialog(
                 TextButton(
                     onClick = { onAdd(newName.trim()); newName = "" },
                     enabled = newName.isNotBlank(),
-                ) { Text("新增並選取") }
+                ) { Text(tr("新增並選取", "Add and select")) }
             }
         },
-        confirmButton = { TextButton(onClick = onDismiss) { Text("關閉") } },
+        confirmButton = { TextButton(onClick = onDismiss) { Text(tr("關閉", "Close")) } },
     )
 }
 
@@ -111,7 +112,7 @@ fun FilterPickerDialog(
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         RadioButton(selected = selected == null, onClick = { onSelect(null) })
-                        Text("全部")
+                        Text(tr("全部", "All"))
                     }
                 }
                 items(options, key = { it.id }) { option ->
@@ -125,6 +126,6 @@ fun FilterPickerDialog(
                 }
             }
         },
-        confirmButton = { TextButton(onClick = onDismiss) { Text("關閉") } },
+        confirmButton = { TextButton(onClick = onDismiss) { Text(tr("關閉", "Close")) } },
     )
 }

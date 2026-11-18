@@ -51,13 +51,14 @@ import icdf.sndc.ims.data.remote.AgentFiltersDto
 import icdf.sndc.ims.data.remote.AgentResponseDto
 import icdf.sndc.ims.data.remote.PendingActionDto
 import icdf.sndc.ims.ui.assets.AssetFormat
+import icdf.sndc.ims.ui.common.tr
 
 /** 小管家頭像（可重複使用於按鈕與對話中）。 */
 @Composable
 fun AgentAvatar(size: Int, modifier: Modifier = Modifier) {
     Image(
         painter = painterResource(R.drawable.ic_agent_avatar),
-        contentDescription = "AI 助理小管家",
+        contentDescription = tr("AI 助理小管家", "AI assistant"),
         modifier = modifier.size(size.dp).clip(CircleShape),
     )
 }
@@ -89,11 +90,11 @@ fun AgentChatDialog(
                 Row(Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
                     AgentAvatar(40)
                     Column(Modifier.weight(1f).padding(start = 8.dp)) {
-                        Text("小管家", style = MaterialTheme.typography.titleMedium)
-                        Text("AI 資產助理", style = MaterialTheme.typography.bodySmall)
+                        Text(tr("小管家", "Assistant"), style = MaterialTheme.typography.titleMedium)
+                        Text(tr("AI 資產助理", "AI asset assistant"), style = MaterialTheme.typography.bodySmall)
                     }
-                    TextButton(onClick = viewModel::reset, enabled = !state.sending) { Text("重新開始") }
-                    TextButton(onClick = onDismiss) { Text("關閉") }
+                    TextButton(onClick = viewModel::reset, enabled = !state.sending) { Text(tr("重新開始", "Restart")) }
+                    TextButton(onClick = onDismiss) { Text(tr("關閉", "Close")) }
                 }
                 HorizontalDivider()
 
@@ -113,7 +114,7 @@ fun AgentChatDialog(
                         item {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
-                                Text("  小管家思考中…", style = MaterialTheme.typography.bodyMedium)
+                                Text(tr("  小管家思考中…", "  Thinking…"), style = MaterialTheme.typography.bodyMedium)
                             }
                         }
                     }
@@ -124,7 +125,7 @@ fun AgentChatDialog(
                     OutlinedTextField(
                         value = state.input,
                         onValueChange = viewModel::onInput,
-                        placeholder = { Text("輸入你的需求…") },
+                        placeholder = { Text(tr("輸入你的需求…", "Type your request…")) },
                         enabled = !state.sending,
                         maxLines = 3,
                         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
@@ -135,7 +136,7 @@ fun AgentChatDialog(
                         onClick = { viewModel.send() },
                         enabled = !state.sending && state.input.isNotBlank(),
                         modifier = Modifier.padding(start = 8.dp),
-                    ) { Text("送出") }
+                    ) { Text(tr("送出", "Send")) }
                 }
             }
         }
@@ -199,9 +200,9 @@ private fun ResponseDetails(
                         style = MaterialTheme.typography.bodySmall,
                     )
                     a.expectedExpiryDate?.let {
-                        Text("到期：${AssetFormat.isoToDisplay(it)}" + when (a.expiryStatus) {
-                            "EXPIRED" -> "（已過使用年限）"
-                            "EXPIRING_SOON" -> "（90 天內到期）"
+                        Text(tr("到期：${AssetFormat.isoToDisplay(it)}", "Expires: ${AssetFormat.isoToDisplay(it)}") + when (a.expiryStatus) {
+                            "EXPIRED" -> tr("（已過使用年限）", " (past useful life)")
+                            "EXPIRING_SOON" -> tr("（90 天內到期）", " (within 90 days)")
                             else -> ""
                         }, style = MaterialTheme.typography.bodySmall)
                     }
@@ -209,22 +210,22 @@ private fun ResponseDetails(
             }
         }
         if (r.intent == "SEARCH" && r.filters != null && (r.totalResults ?: 0) > 0) {
-            OutlinedButton(onClick = { onShowInList(r.filters) }) { Text("在清單中顯示") }
+            OutlinedButton(onClick = { onShowInList(r.filters) }) { Text(tr("在清單中顯示", "Show in list")) }
         }
     } else {
         Button(onClick = { onReview(pending) }) {
-            Text(if (pending.type == "DELETE") "檢視並確認刪除" else "檢視並確認修改")
+            Text(if (pending.type == "DELETE") tr("檢視並確認刪除", "Review and delete") else tr("檢視並確認修改", "Review and edit"))
         }
     }
     r.summary?.let {
-        Text("合計 ${it.totalQuantity} 個／${it.recordCount} 筆紀錄", style = MaterialTheme.typography.titleSmall)
+        Text(tr("合計 ${it.totalQuantity} 個／${it.recordCount} 筆紀錄", "Total ${it.totalQuantity} items / ${it.recordCount} records"), style = MaterialTheme.typography.titleSmall)
     }
 }
 
 @Composable
 private fun ExampleChips(enabled: Boolean, onPick: (String) -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        Text("可以試試：", style = MaterialTheme.typography.labelLarge)
+        Text(tr("可以試試：", "Try:"), style = MaterialTheme.typography.labelLarge)
         AgentChatViewModel.EXAMPLES.forEach { ex ->
             OutlinedButton(onClick = { onPick(ex) }, enabled = enabled) { Text(ex) }
         }
@@ -243,22 +244,22 @@ private fun ConfirmActionDialog(
     val isDelete = action.type == "DELETE"
     AlertDialog(
         onDismissRequest = { if (!executing) onDismiss() },
-        title = { Text(if (isDelete) "確認刪除 ${action.targets.size} 筆資產？" else "確認修改 ${action.targets.size} 筆資產？") },
+        title = { Text(if (isDelete) tr("確認刪除 ${action.targets.size} 筆資產？", "Delete ${action.targets.size} assets?") else tr("確認修改 ${action.targets.size} 筆資產？", "Edit ${action.targets.size} assets?")) },
         text = {
             Column(Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 if (!isDelete && action.changes.isNotEmpty()) {
-                    Text("將修改為：", style = MaterialTheme.typography.labelLarge)
+                    Text(tr("將修改為：", "New values:"), style = MaterialTheme.typography.labelLarge)
                     action.changes.forEach { (k, v) -> Text("・$k → $v") }
                     HorizontalDivider()
                 }
-                Text(if (isDelete) "以下資產將被刪除：" else "受影響的資產：", style = MaterialTheme.typography.labelLarge)
+                Text(if (isDelete) tr("以下資產將被刪除：", "These assets will be deleted:") else tr("受影響的資產：", "Affected assets:"), style = MaterialTheme.typography.labelLarge)
                 action.targets.forEach { t ->
-                    Text("・${t.assetCode}　${t.itemName} × ${t.quantity}（${t.custodian ?: "—"}，${t.location ?: "—"}）",
+                    Text("・${t.assetCode}　${t.itemName} × ${t.quantity}（${t.custodian ?: "—"}, ${t.location ?: "—"}）",
                         style = MaterialTheme.typography.bodySmall)
                 }
                 if (isDelete) {
-                    Text("刪除後將不再出現在清單與統計中。", color = MaterialTheme.colorScheme.error,
+                    Text(tr("刪除後將不再出現在清單與統計中。", "Deleted assets no longer appear in lists or totals."), color = MaterialTheme.colorScheme.error,
                         style = MaterialTheme.typography.bodySmall)
                 }
             }
@@ -266,11 +267,11 @@ private fun ConfirmActionDialog(
         confirmButton = {
             TextButton(onClick = onConfirm, enabled = !executing) {
                 Text(
-                    if (executing) "執行中…" else if (isDelete) "確認刪除" else "確認修改",
+                    if (executing) tr("執行中…", "Working…") else if (isDelete) tr("確認刪除", "Delete") else tr("確認修改", "Save changes"),
                     color = if (isDelete) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
                 )
             }
         },
-        dismissButton = { TextButton(onClick = onCancel, enabled = !executing) { Text("取消") } },
+        dismissButton = { TextButton(onClick = onCancel, enabled = !executing) { Text(tr("取消", "Cancel")) } },
     )
 }

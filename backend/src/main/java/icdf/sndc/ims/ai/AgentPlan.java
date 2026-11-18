@@ -13,18 +13,19 @@ record AgentPlan(String intent, Filters filters, Changes changes, String clarifi
             String keyword, String assetCode, String itemName, String techMission, String color,
             String locationName, String custodianName, String expiryStatus,
             String purchasedFrom, String purchasedTo, String expiresFrom, String expiresTo,
-            Integer minQuantity) {}
+            Integer minQuantity, Integer year, Integer quarter) {}
 
     @JsonIgnoreProperties(ignoreUnknown = true)
     record Changes(
             String assetCode, String itemName, String techMission, String color, String description,
             String locationName, String custodianName, String purchaseDate,
-            BigDecimal usefulLifeYears, Integer quantity) {
+            BigDecimal usefulLifeYears, Integer quantity, String specification, String unit) {
 
         boolean isEmpty() {
             return assetCode == null && itemName == null && techMission == null && color == null
                     && description == null && locationName == null && custodianName == null
-                    && purchaseDate == null && usefulLifeYears == null && quantity == null;
+                    && purchaseDate == null && usefulLifeYears == null && quantity == null
+                    && specification == null && unit == null;
         }
     }
 }

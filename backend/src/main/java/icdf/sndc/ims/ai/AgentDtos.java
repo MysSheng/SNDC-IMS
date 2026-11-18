@@ -37,7 +37,7 @@ public final class AgentDtos {
             String keyword, String assetCode, String itemName, String techMission, String color,
             RefDto location, RefDto custodian, ExpiryStatus expiryStatus,
             LocalDate purchasedFrom, LocalDate purchasedTo, LocalDate expiresFrom, LocalDate expiresTo,
-            Integer minQuantity) {}
+            Integer minQuantity, Integer year, Integer quarter) {}
 
     public record AssetBrief(UUID id, String assetCode, String itemName, int quantity,
                              String location, String custodian, LocalDate expectedExpiryDate) {

@@ -13,6 +13,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import icdf.sndc.ims.ui.common.tr
 
 /** 表單欄位，鍵值與後端 API 欄位名稱一致，方便顯示伺服器回傳的欄位錯誤。 */
 object Field {
@@ -26,20 +27,27 @@ object Field {
     const val QUANTITY = "quantity"
     const val COLOR = "color"
     const val NOTE = "description"
+    const val SPEC = "specification"
+    const val ACQUISITION = "acquisitionType"
+    const val UNIT = "unit"
+    const val TWD = "valueTwd"
+    const val USD = "valueUsd"
 
     /** 必填欄位與畫面名稱（依表單順序），用於「尚未填寫」提醒視窗。 */
-    val REQUIRED = linkedMapOf(
-        CODE to "編號",
-        NAME to "名稱",
-        MISSION to "所屬技術團",
-        DATE to "購置日期",
-        LOCATION to "存放位置",
-        LIFE to "使用年限",
-        CUSTODIAN to "保管人",
-        QUANTITY to "數量",
+    val REQUIRED: Map<String, String> get() = linkedMapOf(
+        CODE to tr("編號", "Asset code"),
+        NAME to tr("名稱", "Name"),
+        MISSION to tr("所屬技術團", "Technical mission"),
+        DATE to tr("購置日期", "Purchase date"),
+        LOCATION to tr("存放位置", "Location"),
+        CUSTODIAN to tr("保管人", "Custodian"),
+        QUANTITY to tr("數量", "Quantity"),
     )
 
-    val LABELS = REQUIRED + mapOf(COLOR to "顏色", NOTE to "備註")
+    val LABELS: Map<String, String> get() = REQUIRED + mapOf(
+        LIFE to tr("使用年限", "Useful life"), SPEC to tr("規格及摘要", "Specification"), ACQUISITION to tr("購置類型", "Acquisition type"), UNIT to tr("單位", "Unit"),
+        TWD to tr("價值（台幣）", "Value (TWD)"), USD to tr("價值（美金）", "Value (USD)"), COLOR to tr("顏色", "Color"), NOTE to tr("備註", "Remarks"),
+    )
 }
 
 data class AssetFormUiState(
@@ -54,6 +62,16 @@ data class AssetFormUiState(
     val quantity: String = "1",
     val color: String = "",
     val description: String = "",
+    val specification: String = "",
+    val acquisitionType: String = "",
+    val unit: String = "",
+    val valueTwd: String = "",
+    val valueUsd: String = "",
+    /** 選填：儲存時把資產加入此盤點期別；兩者皆為 null 代表不加入。 */
+    val periodYear: Int? = null,
+    val periodQuarter: Int? = null,
+    /** 修改時顯示：資產目前所屬的期別。 */
+    val existingPeriods: List<String> = emptyList(),
     val locations: List<RefDto> = emptyList(),
     val custodians: List<RefDto> = emptyList(),
     val errors: Map<String, String> = emptyMap(),
@@ -72,9 +90,21 @@ data class AssetFormUiState(
     }
 }
 
-class AssetFormViewModel(private val repo: AssetRepository, private val assetId: String?) : ViewModel() {
+class AssetFormViewModel(
+    private val repo: AssetRepository,
+    private val assetId: String?,
+    initialYear: Int? = null,
+    initialQuarter: Int? = null,
+) : ViewModel() {
 
-    private val _state = MutableStateFlow(AssetFormUiState(isEdit = assetId != null))
+    // 新增時預設加入清單目前選的盤點期別
+    private val _state = MutableStateFlow(
+        AssetFormUiState(
+            isEdit = assetId != null,
+            periodYear = if (assetId == null && initialQuarter != null) initialYear else null,
+            periodQuarter = if (assetId == null && initialYear != null) initialQuarter else null,
+        ),
+    )
     val state: StateFlow<AssetFormUiState> = _state.asStateFlow()
 
     init {
@@ -110,6 +140,12 @@ class AssetFormViewModel(private val repo: AssetRepository, private val assetId:
                     quantity = asset.quantity.toString(),
                     color = asset.color.orEmpty(),
                     description = asset.description.orEmpty(),
+                    specification = asset.specification.orEmpty(),
+                    acquisitionType = asset.acquisitionType.orEmpty(),
+                    unit = asset.unit.orEmpty(),
+                    valueTwd = AssetFormat.money(asset.valueTwd),
+                    valueUsd = AssetFormat.money(asset.valueUsd),
+                    existingPeriods = asset.periods.map { it.label },
                 )
             }
         }
@@ -129,6 +165,11 @@ class AssetFormViewModel(private val repo: AssetRepository, private val assetId:
             Field.QUANTITY -> it.copy(quantity = value.filter { c -> c.isDigit() })
             Field.COLOR -> it.copy(color = value)
             Field.NOTE -> it.copy(description = value)
+            Field.SPEC -> it.copy(specification = value)
+            Field.ACQUISITION -> it.copy(acquisitionType = value)
+            Field.UNIT -> it.copy(unit = value)
+            Field.TWD -> it.copy(valueTwd = value)
+            Field.USD -> it.copy(valueUsd = value)
             else -> it
         }
         n.copy(errors = n.errors - field, message = null)
@@ -138,6 +179,13 @@ class AssetFormViewModel(private val repo: AssetRepository, private val assetId:
     fun selectPurchaseDate(date: java.time.LocalDate) = _state.update {
         it.copy(purchaseDate = AssetFormat.toDisplay(date), errors = it.errors - Field.DATE)
     }
+
+    /** 盤點期別：year 為 null 代表不加入；選年度後預設第 1 季。 */
+    fun setPeriodYear(year: Int?) = _state.update {
+        it.copy(periodYear = year, periodQuarter = if (year == null) null else (it.periodQuarter ?: 1))
+    }
+
+    fun setPeriodQuarter(quarter: Int) = _state.update { it.copy(periodQuarter = quarter) }
 
     fun dismissValidationDialog() = _state.update { it.copy(missingFields = null, invalidFields = null) }
 
@@ -176,7 +224,7 @@ class AssetFormViewModel(private val repo: AssetRepository, private val assetId:
             val missing = Field.REQUIRED.filterKeys { isMissing(s, it) }.values.toList()
             val invalid = errors.keys.filterNot { isMissing(s, it) }.mapNotNull { Field.LABELS[it] }
             _state.update {
-                it.copy(errors = errors, message = "請修正標示紅色的欄位",
+                it.copy(errors = errors, message = tr("請修正標示紅色的欄位", "Please fix the fields marked in red"),
                     missingFields = missing, invalidFields = invalid)
             }
             return
@@ -187,11 +235,18 @@ class AssetFormViewModel(private val repo: AssetRepository, private val assetId:
             techMission = s.techMission.trim(),
             managerId = s.custodian!!.id,
             purchaseDate = AssetFormat.toIso(s.purchaseDate),
-            usefulLifeYears = s.usefulLifeYears.trim().toDouble(),
+            usefulLifeYears = s.usefulLifeYears.trim().ifEmpty { null }?.toDouble(),
             locationId = s.location!!.id,
-            color = s.color.trim().ifEmpty { null },
+            specification = s.specification.trim().ifEmpty { null },
+            acquisitionType = s.acquisitionType.trim().ifEmpty { null },
+            unit = s.unit.trim().ifEmpty { null },
             quantity = s.quantity.trim().toInt(),
+            valueTwd = AssetFormat.parseMoney(s.valueTwd),
+            valueUsd = AssetFormat.parseMoney(s.valueUsd),
+            color = s.color.trim().ifEmpty { null },
             description = s.description.trim().ifEmpty { null },
+            periodYear = s.periodYear?.takeIf { s.periodQuarter != null },
+            periodQuarter = s.periodQuarter?.takeIf { s.periodYear != null },
         )
         _state.update { it.copy(saving = true, message = null) }
         viewModelScope.launch {
@@ -205,16 +260,21 @@ class AssetFormViewModel(private val repo: AssetRepository, private val assetId:
     }
 
     private fun validate(s: AssetFormUiState): Map<String, String> = buildMap {
-        if (s.assetCode.isBlank()) put(Field.CODE, "請輸入編號") else if (s.assetCode.trim().length > 64) put(Field.CODE, "編號最多 64 個字")
-        if (s.itemName.isBlank()) put(Field.NAME, "請輸入名稱") else if (s.itemName.trim().length > 200) put(Field.NAME, "名稱最多 200 個字")
-        if (s.techMission.isBlank()) put(Field.MISSION, "請輸入所屬技術團") else if (s.techMission.trim().length > 100) put(Field.MISSION, "最多 100 個字")
+        if (s.assetCode.isBlank()) put(Field.CODE, tr("請輸入編號", "Enter an asset code")) else if (s.assetCode.trim().length > 64) put(Field.CODE, tr("編號最多 64 個字", "Asset code: at most 64 characters"))
+        if (s.itemName.isBlank()) put(Field.NAME, tr("請輸入名稱", "Enter a name")) else if (s.itemName.trim().length > 200) put(Field.NAME, tr("名稱最多 200 個字", "Name: at most 200 characters"))
+        if (s.techMission.isBlank()) put(Field.MISSION, tr("請輸入所屬技術團", "Enter the technical mission")) else if (s.techMission.trim().length > 100) put(Field.MISSION, tr("最多 100 個字", "At most 100 characters"))
         AssetFormat.purchaseDateError(s.purchaseDate)?.let { put(Field.DATE, it) }
-        if (s.location == null) put(Field.LOCATION, "請選擇存放位置")
+        if (s.location == null) put(Field.LOCATION, tr("請選擇存放位置", "Select a location"))
         AssetFormat.usefulLifeError(s.usefulLifeYears)?.let { put(Field.LIFE, it) }
-        if (s.custodian == null) put(Field.CUSTODIAN, "請選擇保管人")
+        if (s.custodian == null) put(Field.CUSTODIAN, tr("請選擇保管人", "Select a custodian"))
         AssetFormat.quantityError(s.quantity)?.let { put(Field.QUANTITY, it) }
-        if (s.color.trim().length > 50) put(Field.COLOR, "最多 50 個字")
-        if (s.description.trim().length > 2000) put(Field.NOTE, "最多 2000 個字")
+        if (s.specification.trim().length > 2000) put(Field.SPEC, tr("最多 2000 個字", "At most 2000 characters"))
+        if (s.acquisitionType.trim().length > 100) put(Field.ACQUISITION, tr("最多 100 個字", "At most 100 characters"))
+        if (s.unit.trim().length > 20) put(Field.UNIT, tr("最多 20 個字", "At most 20 characters"))
+        AssetFormat.moneyError(s.valueTwd)?.let { put(Field.TWD, it) }
+        AssetFormat.moneyError(s.valueUsd)?.let { put(Field.USD, it) }
+        if (s.color.trim().length > 50) put(Field.COLOR, tr("最多 50 個字", "At most 50 characters"))
+        if (s.description.trim().length > 2000) put(Field.NOTE, tr("最多 2000 個字", "At most 2000 characters"))
     }
 
     private fun isMissing(s: AssetFormUiState, field: String): Boolean = when (field) {
@@ -223,21 +283,20 @@ class AssetFormViewModel(private val repo: AssetRepository, private val assetId:
         Field.MISSION -> s.techMission.isBlank()
         Field.DATE -> s.purchaseDate.isBlank()
         Field.LOCATION -> s.location == null
-        Field.LIFE -> s.usefulLifeYears.isBlank()
         Field.CUSTODIAN -> s.custodian == null
         Field.QUANTITY -> s.quantity.isBlank()
         else -> false
     }
 
     private fun serverErrors(e: AppError): Map<String, String> = when {
-        e is AppError.Validation && e.code == "ASSET_CODE_DUPLICATE" -> mapOf(Field.CODE to "此編號已被使用")
-        e is AppError.Validation -> e.fieldErrors.mapValues { "內容不正確，請檢查" }
+        e is AppError.Validation && e.code == "ASSET_CODE_DUPLICATE" -> mapOf(Field.CODE to tr("此編號已被使用", "This asset code is already in use"))
+        e is AppError.Validation -> e.fieldErrors.mapValues { tr("內容不正確，請檢查", "Invalid value, please check") }
         else -> emptyMap()
     }
 
     private fun formError(e: AppError): String =
-        if (e is AppError.Validation && e.code == "ASSET_CODE_DUPLICATE") "此編號已被使用，請換一個編號。" else e.toUserMessage()
+        if (e is AppError.Validation && e.code == "ASSET_CODE_DUPLICATE") tr("此編號已被使用，請換一個編號。", "This asset code is already in use. Please use another one.") else e.toUserMessage()
 
     private fun locationError(e: AppError): String =
-        if (e is AppError.Validation && e.code == "LOCATION_NAME_DUPLICATE") "此存放位置已存在。" else e.toUserMessage()
+        if (e is AppError.Validation && e.code == "LOCATION_NAME_DUPLICATE") tr("此存放位置已存在。", "This location already exists.") else e.toUserMessage()
 }

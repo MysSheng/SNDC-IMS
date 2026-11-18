@@ -47,13 +47,25 @@ import icdf.sndc.ims.ui.agent.AgentChatDialog
 import icdf.sndc.ims.ui.agent.AgentChatViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.material3.Checkbox
+import androidx.compose.runtime.rememberCoroutineScope
 import icdf.sndc.ims.data.remote.AssetDto
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import icdf.sndc.ims.ui.common.LanguageToggle
+import icdf.sndc.ims.ui.common.tr
+
+private const val XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 
 /** 智慧辦公室管理系統主畫面：搜尋、清單、CRUD 選單（規格書第 8.3、8.4 節）。 */
 @Composable
 fun SmartOfficeScreen(
     viewModel: AssetListViewModel,
     agentViewModel: AgentChatViewModel,
+    importViewModel: AssetImportViewModel,
     onBack: () -> Unit,
     onOpen: (String) -> Unit,
     onCreate: () -> Unit,
@@ -65,7 +77,29 @@ fun SmartOfficeScreen(
     var showFilters by remember { mutableStateOf(false) }
     var filterPicker by remember { mutableStateOf<String?>(null) }
     var showAgent by rememberSaveable { mutableStateOf(false) }
+    var showImport by rememberSaveable { mutableStateOf(false) }
     val agentState by agentViewModel.state.collectAsStateWithLifecycle()
+    val scope = rememberCoroutineScope()
+
+    // 匯出：伺服器產生 .xlsx 後，讓使用者選擇存檔位置（Android 系統的「儲存」畫面）
+    val saveLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument(XLSX_MIME)) { uri ->
+        val file = viewModel.state.value.pendingExport
+        if (uri == null || file == null) {
+            viewModel.exportHandled(saved = false)
+        } else {
+            scope.launch {
+                val ok = withContext(Dispatchers.IO) {
+                    runCatching {
+                        context.contentResolver.openOutputStream(uri)?.use { it.write(file.bytes) } != null
+                    }.getOrDefault(false)
+                }
+                viewModel.exportHandled(saved = ok, error = if (ok) null else tr("無法寫入檔案，請換一個位置再試一次", "Could not save the file. Please choose another location."))
+            }
+        }
+    }
+    LaunchedEffect(state.pendingExport) {
+        state.pendingExport?.let { saveLauncher.launch(it.fileName) }
+    }
 
     // AI 助理完成修改／刪除後，重新載入清單
     LaunchedEffect(agentState.dataVersion) {
@@ -76,6 +110,7 @@ fun SmartOfficeScreen(
     LaunchedEffect(Unit) {
         viewModel.refresh()
         viewModel.loadOptions()
+        viewModel.loadPeriods()
     }
     LaunchedEffect(state.message) {
         state.message?.let {
@@ -87,49 +122,69 @@ fun SmartOfficeScreen(
     Box(Modifier.fillMaxSize()) {
     Column(Modifier.fillMaxSize().safeDrawingPadding().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            TextButton(onClick = onBack) { Text("← 首頁") }
-            Text("智慧辦公室管理系統", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
+            TextButton(onClick = onBack) { Text(tr("← 首頁", "← Home")) }
+            Text(tr("智慧辦公室管理系統", "Smart Office"), style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
+            LanguageToggle()
             Box {
                 Button(onClick = { crudMenu = true }) { Text("CRUD") }
                 DropdownMenu(expanded = crudMenu, onDismissRequest = { crudMenu = false }) {
-                    DropdownMenuItem(text = { Text("新增資產（Create）") }, onClick = { crudMenu = false; onCreate() })
-                    DropdownMenuItem(text = { Text("查詢資產（Read）") }, onClick = {
+                    DropdownMenuItem(text = { Text(tr("新增資產（Create）", "Create asset")) }, onClick = { crudMenu = false; onCreate() })
+                    DropdownMenuItem(text = { Text(tr("查詢資產（Read）", "Search assets")) }, onClick = {
                         crudMenu = false; viewModel.setMode(PickMode.VIEW)
-                        Toast.makeText(context, "在上方輸入名稱或編號後按「搜尋」", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(context, tr("在上方輸入名稱或編號後按「搜尋」", "Type a name or code above, then tap Search"), Toast.LENGTH_SHORT).show()
                     })
-                    DropdownMenuItem(text = { Text("修改資產（Update）") }, onClick = { crudMenu = false; viewModel.setMode(PickMode.EDIT) })
-                    DropdownMenuItem(text = { Text("刪除資產（Delete）") }, onClick = { crudMenu = false; viewModel.setMode(PickMode.DELETE) })
+                    DropdownMenuItem(text = { Text(tr("修改資產（Update）", "Edit asset")) }, onClick = { crudMenu = false; viewModel.setMode(PickMode.EDIT) })
+                    DropdownMenuItem(text = { Text(tr("刪除資產（Delete）", "Delete asset")) }, onClick = { crudMenu = false; viewModel.setMode(PickMode.DELETE) })
+                    DropdownMenuItem(text = { Text(tr("匯入 Excel／CSV", "Import Excel/CSV")) }, onClick = { crudMenu = false; showImport = true })
                 }
             }
+        }
+
+        // 盤點期別：預設「全部」；先選年度，季度選單才會出現該年度有的季度
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            LabeledDropdown(
+                text = state.year?.let { tr("$it 年", "$it") } ?: tr("全部年度", "All years"),
+                options = listOf<Pair<Int?, String>>(null to tr("全部年度", "All years")) + state.yearOptions.map { it to tr("$it 年", "$it") },
+                enabled = true,
+                onSelect = viewModel::setYear,
+                modifier = Modifier.weight(1f),
+            )
+            LabeledDropdown(
+                text = state.quarter?.let { "Q$it" } ?: tr("全部季度", "All quarters"),
+                options = listOf<Pair<Int?, String>>(null to tr("全部季度", "All quarters")) + state.quarterOptions.map { it to tr("Q$it（第 $it 季）", "Q$it") },
+                enabled = state.year != null,
+                onSelect = viewModel::setQuarter,
+                modifier = Modifier.weight(1f),
+            )
         }
 
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             OutlinedTextField(
                 value = state.keyword,
                 onValueChange = viewModel::onKeywordChange,
-                label = { Text("搜尋名稱或編號") },
+                label = { Text(tr("搜尋名稱、編號或規格", "Search name, code or spec")) },
                 singleLine = true,
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
                 keyboardActions = KeyboardActions(onSearch = { viewModel.refresh() }),
                 modifier = Modifier.weight(1f),
             )
-            OutlinedButton(onClick = viewModel::refresh) { Text("搜尋") }
+            OutlinedButton(onClick = viewModel::refresh) { Text(tr("搜尋", "Search")) }
         }
 
         val activeCount = listOf(state.location != null, state.custodian != null, state.expiry != ExpiryFilter.ALL).count { it }
         Row(verticalAlignment = Alignment.CenterVertically) {
             TextButton(onClick = { showFilters = !showFilters }) {
-                Text((if (showFilters) "▴ " else "▾ ") + "篩選條件" + if (activeCount > 0) "（$activeCount）" else "")
+                Text((if (showFilters) "▴ " else "▾ ") + tr("篩選條件", "Filters") + if (activeCount > 0) tr("（$activeCount）", " ($activeCount)") else "")
             }
             if (state.hasFilters) {
-                TextButton(onClick = viewModel::clearFilters) { Text("清除全部條件") }
+                TextButton(onClick = viewModel::clearFilters) { Text(tr("清除全部條件", "Clear all")) }
             }
         }
         state.agentExtraLabel?.let { label ->
             Surface(color = MaterialTheme.colorScheme.tertiaryContainer, shape = MaterialTheme.shapes.small) {
                 Row(Modifier.fillMaxWidth().padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text("小管家設定的條件：$label", modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodySmall)
-                    TextButton(onClick = viewModel::clearFilters) { Text("清除") }
+                    Text(tr("小管家設定的條件：$label", "Set by assistant: $label"), modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodySmall)
+                    TextButton(onClick = viewModel::clearFilters) { Text(tr("清除", "Clear")) }
                 }
             }
         }
@@ -146,15 +201,31 @@ fun SmartOfficeScreen(
             Surface(color = MaterialTheme.colorScheme.secondaryContainer, shape = MaterialTheme.shapes.small) {
                 Row(Modifier.fillMaxWidth().padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
                     Text(
-                        if (state.mode == PickMode.EDIT) "請點選要修改的資產" else "請點選要刪除的資產",
+                        if (state.mode == PickMode.EDIT) tr("請點選要修改的資產", "Tap the asset to edit") else tr("請點選要刪除的資產", "Tap the asset to delete"),
                         modifier = Modifier.weight(1f),
                     )
-                    TextButton(onClick = { viewModel.setMode(PickMode.VIEW) }) { Text("取消") }
+                    TextButton(onClick = { viewModel.setMode(PickMode.VIEW) }) { Text(tr("取消", "Cancel")) }
                 }
             }
         }
 
-        Text("共 ${state.totalItems} 筆紀錄", style = MaterialTheme.typography.bodyMedium)
+        if (state.selected.isNotEmpty()) {
+            Surface(color = MaterialTheme.colorScheme.primaryContainer, shape = MaterialTheme.shapes.small) {
+                Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text(tr("已選 ${state.selected.size} 筆", "${state.selected.size} selected"), modifier = Modifier.weight(1f))
+                    TextButton(onClick = viewModel::selectAllLoaded) { Text(tr("全選", "Select all")) }
+                    TextButton(onClick = viewModel::clearSelection) { Text(tr("清除", "Clear")) }
+                    Button(onClick = viewModel::exportSelected, enabled = !state.exporting) {
+                        Text(if (state.exporting) tr("匯出中…", "Exporting…") else tr("匯出", "Export"))
+                    }
+                }
+            }
+        }
+
+        Text(
+            (state.periodLabel?.let { tr("$it：", "$it: ") } ?: "") + tr("共 ${state.totalItems} 筆紀錄", "${state.totalItems} records"),
+            style = MaterialTheme.typography.bodyMedium,
+        )
 
         Box(Modifier.weight(1f).fillMaxWidth()) {
             when {
@@ -163,11 +234,11 @@ fun SmartOfficeScreen(
                 state.error != null && state.items.isEmpty() ->
                     Column(Modifier.align(Alignment.Center), horizontalAlignment = Alignment.CenterHorizontally) {
                         Text(state.error!!, color = MaterialTheme.colorScheme.error)
-                        TextButton(onClick = viewModel::refresh) { Text("重試") }
+                        TextButton(onClick = viewModel::refresh) { Text(tr("重試", "Retry")) }
                     }
                 state.items.isEmpty() ->
                     Text(
-                        if (!state.hasFilters) "目前沒有資產紀錄。點右上角「CRUD」→「新增資產」開始建立。" else "找不到符合條件的資產。",
+                        if (!state.hasFilters) tr("目前沒有資產紀錄。點右上角「CRUD」→「新增資產」開始建立。", "No assets yet. Tap CRUD → Create asset, or import an Excel file.") else tr("找不到符合條件的資產。", "No assets match these filters."),
                         modifier = Modifier.align(Alignment.Center),
                     )
                 else -> LazyColumn(
@@ -178,7 +249,11 @@ fun SmartOfficeScreen(
                         item { Text(state.error!!, color = MaterialTheme.colorScheme.error) }
                     }
                     items(state.items, key = { it.id }) { asset ->
-                        AssetCard(asset) {
+                        AssetCard(
+                            asset = asset,
+                            checked = asset.id in state.selected,
+                            onCheckedChange = { viewModel.toggleSelected(asset.id) },
+                        ) {
                             when (state.mode) {
                                 PickMode.VIEW -> onOpen(asset.id)
                                 PickMode.EDIT -> { viewModel.setMode(PickMode.VIEW); onEdit(asset.id) }
@@ -189,7 +264,7 @@ fun SmartOfficeScreen(
                     if (state.hasMore) {
                         item {
                             TextButton(onClick = viewModel::loadMore, enabled = !state.loadingMore, modifier = Modifier.fillMaxWidth()) {
-                                Text(if (state.loadingMore) "載入中…" else "載入更多")
+                                Text(if (state.loadingMore) tr("載入中…", "Loading…") else tr("載入更多", "Load more"))
                             }
                         }
                     }
@@ -209,6 +284,18 @@ fun SmartOfficeScreen(
     }
     }
 
+    if (showImport) {
+        AssetImportDialog(
+            viewModel = importViewModel,
+            onDismiss = { showImport = false },
+            onImported = { y, q ->
+                showImport = false
+                viewModel.loadOptions()
+                viewModel.showPeriod(y, q)
+            },
+        )
+    }
+
     if (showAgent) {
         AgentChatDialog(
             viewModel = agentViewModel,
@@ -219,9 +306,9 @@ fun SmartOfficeScreen(
     }
 
     when (filterPicker) {
-        "location" -> FilterPickerDialog("依存放位置篩選", state.locationOptions, state.location,
+        "location" -> FilterPickerDialog(tr("依存放位置篩選", "Filter by location"), state.locationOptions, state.location,
             onSelect = { viewModel.setLocation(it); filterPicker = null }, onDismiss = { filterPicker = null })
-        "custodian" -> FilterPickerDialog("依保管人篩選", state.custodianOptions, state.custodian,
+        "custodian" -> FilterPickerDialog(tr("依保管人篩選", "Filter by custodian"), state.custodianOptions, state.custodian,
             onSelect = { viewModel.setCustodian(it); filterPicker = null }, onDismiss = { filterPicker = null })
     }
 
@@ -242,13 +329,13 @@ private fun FilterPanel(
         Column(Modifier.fillMaxWidth().padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedButton(onClick = onPickLocation, modifier = Modifier.weight(1f)) {
-                    Text("位置：" + (state.location?.name ?: "全部"), maxLines = 1)
+                    Text(tr("位置：", "Location: ") + (state.location?.name ?: tr("全部", "All")), maxLines = 1)
                 }
                 OutlinedButton(onClick = onPickCustodian, modifier = Modifier.weight(1f)) {
-                    Text("保管人：" + (state.custodian?.name ?: "全部"), maxLines = 1)
+                    Text(tr("保管人：", "Custodian: ") + (state.custodian?.name ?: tr("全部", "All")), maxLines = 1)
                 }
             }
-            Text("使用年限", style = MaterialTheme.typography.labelLarge)
+            Text(tr("使用年限", "Useful life"), style = MaterialTheme.typography.labelLarge)
             Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 ExpiryFilter.entries.forEach { f ->
                     FilterChip(selected = state.expiry == f, onClick = { onExpiry(f) }, label = { Text(f.label) })
@@ -261,31 +348,41 @@ private fun FilterPanel(
 @Composable
 private fun ExpiryBadge(status: String?) {
     val (text, color) = when (status) {
-        "EXPIRED" -> "已過使用年限" to MaterialTheme.colorScheme.error
-        "EXPIRING_SOON" -> "90 天內到期" to MaterialTheme.colorScheme.tertiary
+        "EXPIRED" -> tr("已過使用年限", "Past useful life") to MaterialTheme.colorScheme.error
+        "EXPIRING_SOON" -> tr("90 天內到期", "Expires within 90 days") to MaterialTheme.colorScheme.tertiary
         else -> return
     }
     Text(text, color = color, style = MaterialTheme.typography.labelLarge)
 }
 
+/** 資產卡片；左上角的方框用來勾選要匯出的資產（點方框只勾選，點卡片其他地方才開啟）。 */
 @Composable
-private fun AssetCard(asset: AssetDto, onClick: () -> Unit) {
+private fun AssetCard(asset: AssetDto, checked: Boolean, onCheckedChange: (Boolean) -> Unit, onClick: () -> Unit) {
     Card(onClick = onClick, modifier = Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Row(Modifier.padding(start = 0.dp, top = 4.dp, end = 12.dp, bottom = 12.dp)) {
+        Checkbox(checked = checked, onCheckedChange = onCheckedChange)
+        Column(Modifier.weight(1f).padding(top = 8.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Row(Modifier.fillMaxWidth()) {
                 Text(asset.itemName, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
-                Text("× ${asset.quantity}", style = MaterialTheme.typography.titleMedium)
+                Text("× ${asset.quantity}" + (asset.unit?.let { " $it" } ?: ""), style = MaterialTheme.typography.titleMedium)
             }
-            Text("編號：${asset.assetCode}", style = MaterialTheme.typography.bodyMedium)
+            Text(tr("編號：${asset.assetCode}", "Code: ${asset.assetCode}"), style = MaterialTheme.typography.bodyMedium)
+            if (!asset.specification.isNullOrBlank()) {
+                Text(asset.specification, style = MaterialTheme.typography.bodySmall, maxLines = 1)
+            }
             Text(
-                "保管人：${asset.manager?.name ?: "—"}　位置：${asset.location?.name ?: "—"}",
+                tr("保管人", "Custodian") + "：${asset.manager?.name ?: "—"}　" + tr("位置", "Location") + "：${asset.location?.name ?: "—"}",
                 style = MaterialTheme.typography.bodyMedium,
             )
-            if (!asset.color.isNullOrBlank()) Text("顏色：${asset.color}", style = MaterialTheme.typography.bodySmall)
+            if (!asset.color.isNullOrBlank()) Text(tr("顏色：${asset.color}", "Color: ${asset.color}"), style = MaterialTheme.typography.bodySmall)
             ExpiryBadge(asset.expiryStatus)
             if (asset.expectedExpiryDate != null) {
-                Text("預計到期：${AssetFormat.isoToDisplay(asset.expectedExpiryDate)}", style = MaterialTheme.typography.bodySmall)
+                Text(tr("預計到期：${AssetFormat.isoToDisplay(asset.expectedExpiryDate)}", "Expires: ${AssetFormat.isoToDisplay(asset.expectedExpiryDate)}"), style = MaterialTheme.typography.bodySmall)
             }
+            if (asset.periods.isNotEmpty()) {
+                Text(tr("盤點期別：", "Periods: ") + asset.periods.joinToString("、") { it.label }, style = MaterialTheme.typography.bodySmall)
+            }
+        }
         }
     }
 }
@@ -294,13 +391,13 @@ private fun AssetCard(asset: AssetDto, onClick: () -> Unit) {
 fun DeleteConfirmDialog(asset: AssetDto, deleting: Boolean, onConfirm: () -> Unit, onDismiss: () -> Unit) {
     AlertDialog(
         onDismissRequest = { if (!deleting) onDismiss() },
-        title = { Text("確認刪除") },
-        text = { Text("確定要刪除「${asset.itemName}」（編號 ${asset.assetCode}，數量 ${asset.quantity}）嗎？\n刪除後將不再出現在清單與統計中。") },
+        title = { Text(tr("確認刪除", "Confirm delete")) },
+        text = { Text(tr("確定要刪除「${asset.itemName}」（編號 ${asset.assetCode}，數量 ${asset.quantity}）嗎？\n刪除後將不再出現在清單與統計中。", "Delete \"${asset.itemName}\" (code ${asset.assetCode}, quantity ${asset.quantity})?\nIt will no longer appear in lists or totals.")) },
         confirmButton = {
             TextButton(onClick = onConfirm, enabled = !deleting) {
-                Text(if (deleting) "刪除中…" else "刪除", color = MaterialTheme.colorScheme.error)
+                Text(if (deleting) tr("刪除中…", "Deleting…") else tr("刪除", "Delete"), color = MaterialTheme.colorScheme.error)
             }
         },
-        dismissButton = { TextButton(onClick = onDismiss, enabled = !deleting) { Text("取消") } },
+        dismissButton = { TextButton(onClick = onDismiss, enabled = !deleting) { Text(tr("取消", "Cancel")) } },
     )
 }

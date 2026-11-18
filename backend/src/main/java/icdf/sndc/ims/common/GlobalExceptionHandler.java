@@ -13,6 +13,8 @@ import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
+import org.springframework.web.multipart.support.MissingServletRequestPartException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 import java.util.List;
@@ -48,6 +50,18 @@ public class GlobalExceptionHandler {
                 : ((MissingServletRequestParameterException) ex).getParameterName();
         return build(HttpStatus.BAD_REQUEST, "VALIDATION_ERROR", "Request validation failed",
                 List.of(new ApiError.FieldDetail(field, "Invalid or missing value")));
+    }
+
+    @ExceptionHandler(MaxUploadSizeExceededException.class)
+    public ResponseEntity<ApiError> handleTooLarge(MaxUploadSizeExceededException ex) {
+        return build(HttpStatus.valueOf(413), "FILE_TOO_LARGE", "File must be at most 10 MB",
+                List.of(new ApiError.FieldDetail("file", "File must be at most 10 MB")));
+    }
+
+    @ExceptionHandler(MissingServletRequestPartException.class)
+    public ResponseEntity<ApiError> handleMissingPart(MissingServletRequestPartException ex) {
+        return build(HttpStatus.BAD_REQUEST, "VALIDATION_ERROR", "Request validation failed",
+                List.of(new ApiError.FieldDetail(ex.getRequestPartName(), "File is required")));
     }
 
     @ExceptionHandler(DataIntegrityViolationException.class)

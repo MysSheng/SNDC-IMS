@@ -1,14 +1,19 @@
 package icdf.sndc.ims.asset;
 
 import icdf.sndc.ims.asset.AssetDtos.AssetQuery;
+import icdf.sndc.ims.period.InventoryPeriod;
+import jakarta.persistence.criteria.Join;
 import jakarta.persistence.criteria.JoinType;
 import jakarta.persistence.criteria.Path;
 import jakarta.persistence.criteria.Predicate;
+import jakarta.persistence.criteria.Root;
+import jakarta.persistence.criteria.Subquery;
 import org.springframework.data.jpa.domain.Specification;
 
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 
 /** 以 JPA Criteria 組合查詢條件；所有值皆為參數，不拼接 SQL。一律排除 Soft Deleted 紀錄。 */
 final class AssetSpecifications {
@@ -27,7 +32,8 @@ final class AssetSpecifications {
             p.add(cb.isNull(root.get("deletedAt")));
             if (q.keyword() != null) {
                 String like = "%" + escapeLike(q.keyword()) + "%";
-                p.add(cb.or(cb.like(root.get("itemName"), like, '\\'), cb.like(root.get("assetCode"), like, '\\')));
+                p.add(cb.or(cb.like(root.get("itemName"), like, '\\'), cb.like(root.get("assetCode"), like, '\\'),
+                        cb.like(root.get("specification"), like, '\\')));
             }
             if (q.assetCode() != null) {
                 p.add(cb.equal(root.get("assetCode"), q.assetCode()));
@@ -70,6 +76,20 @@ final class AssetSpecifications {
             }
             if (q.minQuantity() != null) {
                 p.add(cb.greaterThanOrEqualTo(root.get("quantity"), q.minQuantity()));
+            }
+            if (q.year() != null && query != null) {
+                // 以 EXISTS 子查詢篩選期別，避免一筆資產屬於多季時在清單中重複出現
+                Subquery<UUID> sq = query.subquery(UUID.class);
+                Root<Asset> sub = sq.from(Asset.class);
+                Join<Asset, InventoryPeriod> period = sub.join("periods");
+                List<Predicate> sp = new ArrayList<>();
+                sp.add(cb.equal(sub.get("id"), root.get("id")));
+                sp.add(cb.equal(period.get("year"), q.year()));
+                if (q.quarter() != null) {
+                    sp.add(cb.equal(period.get("quarter"), q.quarter()));
+                }
+                sq.select(sub.get("id")).where(sp.toArray(new Predicate[0]));
+                p.add(cb.exists(sq));
             }
             return cb.and(p.toArray(new Predicate[0]));
         };

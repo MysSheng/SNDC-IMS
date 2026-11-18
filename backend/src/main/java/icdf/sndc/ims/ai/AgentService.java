@@ -285,7 +285,8 @@ public class AgentService {
 
     private Resolved resolve(AgentPlan.Filters f) {
         if (f == null) {
-            f = new AgentPlan.Filters(null, null, null, null, null, null, null, null, null, null, null, null, null);
+            f = new AgentPlan.Filters(null, null, null, null, null, null, null, null, null, null, null, null, null,
+                    null, null);
         }
         List<String> desc = new ArrayList<>();
         String keyword = TextNormalizer.normalize(f.keyword());
@@ -331,11 +332,19 @@ public class AgentService {
             if (minQuantity < 1) throw new Clarify("數量條件需要是 1 以上的整數，可以再確認一下嗎？");
             desc.add("數量 ≥ " + minQuantity);
         }
+        Integer year = f.year(), quarter = f.quarter();
+        if (quarter != null && year == null) {
+            throw new Clarify("請問是哪一年的第 " + quarter + " 季清單？");
+        }
+        if (year != null && (year < 2000 || year > 2999 || (quarter != null && (quarter < 1 || quarter > 4)))) {
+            throw new Clarify("盤點期別需要是 2000–2999 年的第 1–4 季，可以再確認一下嗎？");
+        }
+        if (year != null) desc.add("盤點期別 " + year + (quarter == null ? " 年" : "Q" + quarter));
         AssetQuery q = new AssetQuery(keyword, assetCode, itemName, techMission, color,
                 custodian == null ? null : custodian.id(), location == null ? null : location.id(),
-                expiry, purchasedFrom, purchasedTo, expiresFrom, expiresTo, minQuantity);
+                expiry, purchasedFrom, purchasedTo, expiresFrom, expiresTo, minQuantity, year, quarter);
         AgentFilters filters = new AgentFilters(keyword, assetCode, itemName, techMission, color, location, custodian,
-                expiry, purchasedFrom, purchasedTo, expiresFrom, expiresTo, minQuantity);
+                expiry, purchasedFrom, purchasedTo, expiresFrom, expiresTo, minQuantity, year, quarter);
         return new Resolved(q, filters, String.join("、", desc));
     }
 
@@ -345,11 +354,15 @@ public class AgentService {
         String techMission = TextNormalizer.normalize(c.techMission());
         String color = TextNormalizer.normalize(c.color());
         String description = TextNormalizer.normalize(c.description());
+        String specification = TextNormalizer.normalize(c.specification());
+        String unit = TextNormalizer.normalize(c.unit());
         if (assetCode != null) display.put("編號", assetCode);
         if (itemName != null) display.put("名稱", itemName);
         if (techMission != null) display.put("所屬技術團", techMission);
         if (color != null) display.put("顏色", color);
         if (description != null) display.put("備註", description);
+        if (specification != null) display.put("規格及摘要", specification);
+        if (unit != null) display.put("單位", unit);
         UUID locationId = null;
         if (TextNormalizer.normalize(c.locationName()) != null) {
             RefDto l = match(c.locationName(), locations.list().stream().map(x -> new RefDto(x.id(), x.name())).toList(), "存放位置");
@@ -371,7 +384,7 @@ public class AgentService {
             throw new Clarify("要把哪個欄位改成什麼呢？例如「名稱改成水龍頭」。");
         }
         return new ResolvedChanges(assetCode, itemName, techMission, color, description, locationId, managerId,
-                purchaseDate, years, c.quantity());
+                purchaseDate, years, c.quantity(), specification, unit);
     }
 
     /** 名稱比對：完全相同 → 唯一部分符合 → 否則請使用者說明（列出候選）。比對在 Backend 進行，名單不送給 LLM。 */
@@ -419,15 +432,24 @@ public class AgentService {
                 c.purchaseDate() != null ? c.purchaseDate() : base.purchaseDate(),
                 c.usefulLifeYears() != null ? c.usefulLifeYears() : base.usefulLifeYears(),
                 c.locationId() != null ? c.locationId() : base.locationId(),
-                c.color() != null ? c.color() : base.color(),
+                c.specification() != null ? c.specification() : base.specification(),
+                base.acquisitionType(),
+                c.unit() != null ? c.unit() : base.unit(),
                 c.quantity() != null ? c.quantity() : base.quantity(),
-                c.description() != null ? c.description() : base.description());
+                base.valueTwd(),
+                base.valueUsd(),
+                c.color() != null ? c.color() : base.color(),
+                c.description() != null ? c.description() : base.description(),
+                null,
+                null);
     }
 
-    private static final Map<String, String> FIELD_LABELS = Map.of(
-            "assetCode", "編號", "itemName", "名稱", "techMission", "所屬技術團", "managerId", "保管人",
-            "purchaseDate", "購置日期", "usefulLifeYears", "使用年限", "locationId", "存放位置",
-            "color", "顏色", "quantity", "數量", "description", "備註");
+    private static final Map<String, String> FIELD_LABELS = Map.ofEntries(
+            Map.entry("assetCode", "編號"), Map.entry("itemName", "名稱"), Map.entry("techMission", "所屬技術團"),
+            Map.entry("managerId", "保管人"), Map.entry("purchaseDate", "購置日期"),
+            Map.entry("usefulLifeYears", "使用年限"), Map.entry("locationId", "存放位置"),
+            Map.entry("specification", "規格及摘要"), Map.entry("unit", "單位"), Map.entry("color", "顏色"),
+            Map.entry("quantity", "數量"), Map.entry("description", "備註"));
 
     /** 套用修改後仍須符合手動編輯的所有規則（必填、格式、年份）。 */
     private void validateMerged(AssetRequest m, AssetResponse original) {

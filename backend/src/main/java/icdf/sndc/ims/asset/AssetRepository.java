@@ -5,6 +5,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Query;
 
+import java.util.Collection;
 import java.util.List;
 
 import java.util.Optional;
@@ -19,6 +20,12 @@ public interface AssetRepository extends JpaRepository<Asset, UUID>, JpaSpecific
     boolean existsByAssetCode(String assetCode);
 
     boolean existsByAssetCodeAndIdNot(String assetCode, UUID id);
+
+    /** 含 Soft Deleted 紀錄（匯入時同編號的已刪除資產會被恢復）。 */
+    List<Asset> findByAssetCodeIn(Collection<String> assetCodes);
+
+    @EntityGraph(attributePaths = {"manager", "location"})
+    List<Asset> findByIdInAndDeletedAtIsNull(Collection<UUID> ids);
 
     /** 名稱相同即視為同一品項；合計數量大於 1 才列入；排除 Soft Deleted（規格書第 5.2 節）。 */
     @Query("""

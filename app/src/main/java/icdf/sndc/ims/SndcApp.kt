@@ -2,6 +2,7 @@ package icdf.sndc.ims
 
 import android.app.Application
 import icdf.sndc.ims.data.AppContainer
+import icdf.sndc.ims.ui.common.I18n
 
 /** 應用程式進入點；以簡單的手動依賴注入（AppContainer）建立共用物件。 */
 class SndcApp : Application() {
@@ -10,6 +11,7 @@ class SndcApp : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        I18n.init(this)
         container = AppContainer(this)
     }
 }

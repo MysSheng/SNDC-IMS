@@ -26,7 +26,7 @@ public class PendingActionStore {
     public record ResolvedChanges(
             String assetCode, String itemName, String techMission, String color, String description,
             UUID locationId, UUID managerId, java.time.LocalDate purchaseDate,
-            java.math.BigDecimal usefulLifeYears, Integer quantity) {}
+            java.math.BigDecimal usefulLifeYears, Integer quantity, String specification, String unit) {}
 
     public record PendingAction(UUID id, UUID ownerId, Type type, List<UUID> targetIds,
                                 ResolvedChanges changes, Instant expiresAt) {}

@@ -37,6 +37,9 @@ public class ManagerService {
         if (name == null) {
             throw ApiException.invalidField("displayName", "Display name is required");
         }
+        if (managerRepository.existsByDisplayName(name)) {
+            throw ApiException.conflict("MANAGER_NAME_DUPLICATE", "Custodian name already exists", "displayName");
+        }
         User user = null;
         if (req.userId() != null) {
             user = userRepository.findById(req.userId())
