@@ -151,6 +151,7 @@ Token 為 HS256 JWT，有效期限由 `JWT_EXPIRATION` 設定（預設 12 小時
 | keyword | 名稱、編號或規格部分符合（App 的搜尋框使用此參數） |
 | year | 盤點期別年度：該年度任一季清單中的資產（同一筆只列一次） |
 | quarter | 盤點期別季度 1–4；必須搭配 `year`，否則 `400` |
+| itemNames | 名稱完全符合其中任一個，可重複，例如 `?itemNames=辦公椅&itemNames=電腦椅`（AI 助理把「椅子／chair」對應到實際名稱時使用） |
 | assetCode | 完全符合 |
 | itemName | 部分符合 |
 | techMission, color | 完全符合 |
@@ -220,7 +221,7 @@ Soft Delete：設定 `deleted_at`，資料仍保留在資料庫中。
 ```json
 { "ids": ["uuid", "uuid"], "year": 2026, "quarter": 3 }
 ```
-`ids` 1–1000 筆；`year`／`quarter` 選填，只用於標題列與檔名。回傳主管清單格式的 `.xlsx`（每位保管人一個工作表，含小計），檔名在 `Content-Disposition`（`filename*=UTF-8''…`）。已刪除或不存在的 ID 會略過；全部都找不到時回 `404`。
+`ids` 1–1000 筆；`year`／`quarter` 選填，只用於標題列與檔名。回傳主管清單格式的 `.xlsx`：一個工作表，名稱為盤點期別（`2026Q3`；只給年度時為 `2026`；未給時為今天所在的季度），每位保管人一個區塊（含小計），檔名在 `Content-Disposition`（`filename*=UTF-8''…`）。已刪除或不存在的 ID 會略過；全部都找不到時回 `404`。
 
 ## Locations
 
@@ -281,3 +282,14 @@ AgentResponse：
 | Phase | Endpoint |
 |---|---|
 | 3 | `/assets/{id}/images`（照片） |
+
+### `POST /assets/export/write-off` → `200`（`.xlsx`，檔名固定為「報銷核算.xlsx」）
+```json
+{
+  "items": [ { "id": "uuid", "remarks": "報廢原因:超過使用年限且損壞。" }, { "id": "uuid", "remarks": null } ],
+  "title": "索馬利蘭政府資料中心與資訊安全能提升計畫",
+  "year": 2026, "quarter": 1,
+  "saveRemarks": true
+}
+```
+依報銷核算格式產生：標題列「`title` YYYY年Qn」、「報廢物品:」、表頭 No.／Asset ID／Asset Type／Specification／Location／Remarks，依 `items` 順序編號。`remarks` 為 null 時沿用資產目前的備註；`saveRemarks: true` 時把非空白的 `remarks` 寫回資產的備註（同一個交易），原本的備註移到後面的括號內，例如 `報廢原因:超過使用年限且損壞。(財國合發字第1號)`；原備註已以新備註開頭時不再重複。檔案中的 Remarks 欄只放這次的 `remarks`。`items` 1–1000 筆，已刪除或不存在的 ID 會略過。

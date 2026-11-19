@@ -10,6 +10,10 @@ import icdf.sndc.ims.data.remote.ExportRequestDto
 import icdf.sndc.ims.data.remote.ImportPreviewDto
 import icdf.sndc.ims.data.remote.ImportResultDto
 import icdf.sndc.ims.data.remote.PeriodDto
+import icdf.sndc.ims.data.remote.WriteOffExportRequestDto
+import icdf.sndc.ims.data.remote.WriteOffItemDto
+import okhttp3.ResponseBody
+import retrofit2.Response
 import icdf.sndc.ims.data.remote.toAppError
 import icdf.sndc.ims.data.remote.LocationDto
 import icdf.sndc.ims.data.remote.ManagerDto
@@ -43,6 +47,8 @@ class AssetRepository(private val api: AssetApi, private val json: Json) {
         /** 盤點期別：只給 year 為該年度任一季；quarter 需搭配 year。 */
         val year: Int? = null,
         val quarter: Int? = null,
+        /** 名稱完全符合其中任一個（由小管家設定）。 */
+        val itemNames: List<String>? = null,
     )
 
     /** 匯出的檔案（尚未存到手機）。 */
@@ -66,6 +72,7 @@ class AssetRepository(private val api: AssetApi, private val json: Json) {
                 minQuantity = filters.minQuantity,
                 year = filters.year,
                 quarter = filters.quarter?.takeIf { filters.year != null },
+                itemNames = filters.itemNames?.takeIf { it.isNotEmpty() },
                 page = page,
                 size = size,
             )
@@ -117,8 +124,23 @@ class AssetRepository(private val api: AssetApi, private val json: Json) {
     suspend fun discardImport(token: String): ApiResult<Unit> = safeApiCall(json) { api.importDiscard(token) }
 
     /** 匯出勾選的資產為 .xlsx（主管清單格式）；year／quarter 只用於標題與檔名。 */
-    suspend fun export(ids: List<String>, year: Int?, quarter: Int?): ApiResult<ExportedFile> {
-        val call = safeApiCall(json) { api.export(ExportRequestDto(ids, year, quarter?.takeIf { year != null })) }
+    suspend fun export(ids: List<String>, year: Int?, quarter: Int?): ApiResult<ExportedFile> =
+        toFile(safeApiCall(json) { api.export(ExportRequestDto(ids, year, quarter?.takeIf { year != null })) })
+
+    /** 匯出報銷核算；saveRemarks 時同時把編輯過的備註寫回資產。 */
+    suspend fun exportWriteOff(
+        items: List<WriteOffItemDto>,
+        title: String?,
+        year: Int?,
+        quarter: Int?,
+        saveRemarks: Boolean,
+    ): ApiResult<ExportedFile> = toFile(safeApiCall(json) {
+        api.exportWriteOff(
+            WriteOffExportRequestDto(items, title?.trim()?.ifEmpty { null }, year, quarter?.takeIf { year != null }, saveRemarks),
+        )
+    })
+
+    private fun toFile(call: ApiResult<Response<ResponseBody>>): ApiResult<ExportedFile> {
         return when (call) {
             is ApiResult.Failure -> call
             is ApiResult.Success -> {

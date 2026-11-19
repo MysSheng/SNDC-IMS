@@ -106,7 +106,8 @@ public class AgentService {
 
         AgentPlan plan;
         try {
-            plan = mapper.readValue(llm.plan(AgentPrompt.system(today), turns), AgentPlan.class);
+            String system = AgentPrompt.system(today, assets.distinctItemNames());
+            plan = mapper.readValue(llm.plan(system, turns), AgentPlan.class);
         } catch (JacksonException | IllegalArgumentException e) {
             log.warn("Unparseable LLM output: {}", e.getMessage());
             return AgentResponse.text("CLARIFY", "抱歉，我沒有完全理解你的需求，可以換個說法再說一次嗎？");
@@ -147,7 +148,9 @@ public class AgentService {
     private AgentResponse count(AgentPlan plan) {
         Resolved r = resolve(plan.filters());
         CountSummary s = assets.countSummary(r.query());
-        String subject = r.query().itemName() != null ? "「" + r.query().itemName() + "」"
+        // 有 itemNames 時名稱已列在條件說明中，不重複
+        String subject = r.query().itemNames() != null ? "符合條件的資產"
+                : r.query().itemName() != null ? "「" + r.query().itemName() + "」"
                 : r.query().keyword() != null ? "「" + r.query().keyword() + "」相關的資產" : "符合條件的資產";
         String reply = s.recordCount() == 0
                 ? "沒有找到" + subject + cond(r) + "。"
@@ -286,7 +289,7 @@ public class AgentService {
     private Resolved resolve(AgentPlan.Filters f) {
         if (f == null) {
             f = new AgentPlan.Filters(null, null, null, null, null, null, null, null, null, null, null, null, null,
-                    null, null);
+                    null, null, null);
         }
         List<String> desc = new ArrayList<>();
         String keyword = TextNormalizer.normalize(f.keyword());
@@ -297,6 +300,10 @@ public class AgentService {
         if (keyword != null) desc.add("關鍵字「" + keyword + "」");
         if (assetCode != null) desc.add("編號 " + assetCode);
         if (itemName != null) desc.add("名稱含「" + itemName + "」");
+        List<String> itemNames = f.itemNames() == null ? null : f.itemNames().stream()
+                .map(TextNormalizer::normalize).filter(java.util.Objects::nonNull).distinct().limit(50).toList();
+        if (itemNames != null && itemNames.isEmpty()) itemNames = null;
+        if (itemNames != null) desc.add("名稱：" + String.join("、", itemNames));
         if (techMission != null) desc.add("技術團：" + techMission);
         if (color != null) desc.add("顏色：" + color);
 
@@ -342,9 +349,9 @@ public class AgentService {
         if (year != null) desc.add("盤點期別 " + year + (quarter == null ? " 年" : "Q" + quarter));
         AssetQuery q = new AssetQuery(keyword, assetCode, itemName, techMission, color,
                 custodian == null ? null : custodian.id(), location == null ? null : location.id(),
-                expiry, purchasedFrom, purchasedTo, expiresFrom, expiresTo, minQuantity, year, quarter);
+                expiry, purchasedFrom, purchasedTo, expiresFrom, expiresTo, minQuantity, year, quarter, itemNames);
         AgentFilters filters = new AgentFilters(keyword, assetCode, itemName, techMission, color, location, custodian,
-                expiry, purchasedFrom, purchasedTo, expiresFrom, expiresTo, minQuantity, year, quarter);
+                expiry, purchasedFrom, purchasedTo, expiresFrom, expiresTo, minQuantity, year, quarter, itemNames);
         return new Resolved(q, filters, String.join("、", desc));
     }
 

@@ -116,3 +116,21 @@ data class ManagerDto(val id: String, val displayName: String, val userId: Strin
 
 @Serializable
 data class CreateManagerRequest(val displayName: String)
+
+/** 報銷核算的一列：remarks 為 null 時沿用資產目前的備註。 */
+@Serializable
+data class WriteOffItemDto(val id: String, val remarks: String? = null)
+
+@Serializable
+data class WriteOffExportRequestDto(
+    val items: List<WriteOffItemDto>,
+    /** 計畫名稱（標題列），例如「索馬利蘭政府資料中心與資訊安全能提升計畫」。 */
+    val title: String? = null,
+    val year: Int? = null,
+    val quarter: Int? = null,
+    /**
+     * true：把非空白的備註寫回資產。不設預設值，確保 false 時也會送出
+     * （kotlinx.serialization 預設不送出等於預設值的欄位）。
+     */
+    val saveRemarks: Boolean,
+)

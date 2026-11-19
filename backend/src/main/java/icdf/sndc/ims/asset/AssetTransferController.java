@@ -1,6 +1,7 @@
 package icdf.sndc.ims.asset;
 
 import icdf.sndc.ims.asset.AssetDtos.ExportRequest;
+import icdf.sndc.ims.asset.AssetDtos.WriteOffExportRequest;
 import icdf.sndc.ims.asset.AssetImportDtos.ImportPreview;
 import icdf.sndc.ims.asset.AssetImportDtos.ImportResult;
 import icdf.sndc.ims.common.ApiException;
@@ -72,6 +73,20 @@ public class AssetTransferController {
     @PostMapping("/export")
     public ResponseEntity<byte[]> export(@Valid @RequestBody ExportRequest request) {
         AssetExportService.ExportFile f = exportService.export(request);
+        return ResponseEntity.ok()
+                .contentType(XLSX)
+                .header(HttpHeaders.CONTENT_DISPOSITION,
+                        ContentDisposition.attachment().filename(f.fileName(), StandardCharsets.UTF_8).build().toString())
+                .body(f.content());
+    }
+
+    /** 匯出報銷核算 .xlsx（檔名固定為「報銷核算.xlsx」）；saveRemarks 時同時更新資產備註。 */
+    @PostMapping("/export/write-off")
+    public ResponseEntity<byte[]> exportWriteOff(@Valid @RequestBody WriteOffExportRequest request) {
+        return file(exportService.exportWriteOff(request));
+    }
+
+    private static ResponseEntity<byte[]> file(AssetExportService.ExportFile f) {
         return ResponseEntity.ok()
                 .contentType(XLSX)
                 .header(HttpHeaders.CONTENT_DISPOSITION,

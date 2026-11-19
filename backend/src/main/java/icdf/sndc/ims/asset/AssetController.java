@@ -55,11 +55,12 @@ public class AssetController {
             @RequestParam(required = false) Integer minQuantity,
             @RequestParam(required = false) Integer year,
             @RequestParam(required = false) Integer quarter,
+            @RequestParam(required = false) java.util.List<String> itemNames,
             @RequestParam(required = false) Integer page,
             @RequestParam(required = false) Integer size,
             @RequestParam(required = false) String sort) {
         AssetQuery query = new AssetQuery(keyword, assetCode, itemName, techMission, color, managerId, locationId,
-                expiryStatus, purchasedFrom, purchasedTo, expiresFrom, expiresTo, minQuantity, year, quarter);
+                expiryStatus, purchasedFrom, purchasedTo, expiresFrom, expiresTo, minQuantity, year, quarter, itemNames);
         return assetService.search(query, page, size, sort);
     }
 

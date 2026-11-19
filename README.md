@@ -199,7 +199,7 @@ cd backend
 - 資產欄位對照主管的「財產管理個人清單」（Flyway `V4__excel_import_and_periods.sql`）：加回規格及摘要、單位，新增購置類型、價值（台幣／美金）；使用年限改為選填。**V4 會清空資產、照片、保管人、存放位置（測試資料），保留帳號。**
 - 清單上方的「年度 → 季度」下拉選單，預設全部。
 - CRUD →「匯入 Excel／CSV」：直接上傳主管的 `.xlsx`，先檢查再確認，有任何錯誤整批都不寫入。
-- 資產卡片左上角的勾選方框 →「匯出」：產生主管清單格式的 `.xlsx`。
+- 資產卡片左上角的勾選方框 →「匯出」：可選「財產清單（主管格式）」或「報銷核算」。報銷核算會先檢查備註，可一次填入相同的報廢原因或逐筆編輯，檔名固定為「報銷核算.xlsx」。
 - 介面中文／EN 切換。
 - 財產清單含保管人姓名：`.gitignore` 排除 `*.xlsx`、`*.xls`、`*.csv`，**不要提交到 GitHub**。
 
@@ -409,7 +409,7 @@ cd backend
   - **Inventory period dropdowns** above the list: pick a year, then a quarter; the default shows everything.
   - Asset details, create/edit form (locations and custodians can be added from the picker), delete with confirmation.
   - **Import** (CRUD → "Import Excel/CSV"): upload the supervisor's `.xlsx` as is. The server checks every row first, and nothing is written if any row has an error. Existing asset codes are updated; values the Excel file does not have (useful life, color) are kept.
-  - **Export**: tick the box at the top left of asset cards, then tap "Export" to get an `.xlsx` in the supervisor's layout (one sheet per custodian, with a subtotal row).
+  - **Export**: tick the box at the top left of asset cards, then tap "Export" and choose either the asset list in the supervisor's layout (one sheet named after the inventory period, e.g. `2026Q3`, with one block and subtotal per custodian) or the **write-off list** (報銷核算). For the write-off list, the app checks the remarks first and lets you fill the same disposal reason for all items or edit them one by one; the file is always named `報銷核算.xlsx`, whatever the UI language.
   - All data is written to PostgreSQL through the backend API; the app stores no asset data.
 - **AI assistant**: tap the mascot at the bottom right to search, count, find duplicates, or edit and delete assets (in bulk) in natural language. Edits and deletions open a confirmation dialog listing every affected asset; nothing changes until you confirm. New assets must still be created manually.
 - **Indoor guidance**: the "Guide me" button on the asset details screen is a placeholder for the indoor navigation module.

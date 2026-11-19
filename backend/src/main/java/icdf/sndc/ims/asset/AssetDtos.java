@@ -155,14 +155,16 @@ public final class AssetDtos {
             LocalDate expiresTo,
             Integer minQuantity,
             Integer year,
-            Integer quarter
+            Integer quarter,
+            /** 名稱完全符合其中任一個（AI 助理把「椅子／chair」對應到實際名稱，例如辦公椅、電腦椅）。 */
+            java.util.List<String> itemNames
     ) {
         /** 是否至少有一個條件（批次修改／刪除時必須有條件，避免誤刪全部）。 */
         public boolean hasAnyCondition() {
             return keyword != null || assetCode != null || itemName != null || techMission != null || color != null
                     || managerId != null || locationId != null || expiryStatus != null || purchasedFrom != null
                     || purchasedTo != null || expiresFrom != null || expiresTo != null || minQuantity != null
-                    || year != null;
+                    || year != null || (itemNames != null && !itemNames.isEmpty());
         }
     }
 
@@ -173,4 +175,30 @@ public final class AssetDtos {
             List<@NotNull UUID> ids,
             Integer year,
             Integer quarter) {}
+
+    /**
+     * 報銷核算匯出（規格書第 4.6 節）。items 依畫面順序；remarks 為匯出用的備註，null 代表沿用資產目前的備註。
+     * saveRemarks = true 時，同時把非空白的 remarks 寫回資產的備註。title 為計畫名稱（標題列）。
+     */
+    public record WriteOffExportRequest(
+            @jakarta.validation.constraints.NotEmpty(message = "Select at least one asset")
+            @Size(max = 1000, message = "At most 1000 assets per export")
+            List<@NotNull @jakarta.validation.Valid WriteOffItem> items,
+            @Size(max = 200, message = "Title must be at most 200 characters")
+            String title,
+            Integer year,
+            Integer quarter,
+            /** 用 Boolean：欄位未送出時視為 false（Jackson 3 不允許基本型別 boolean 缺值）。 */
+            Boolean saveRemarks) {
+
+        public boolean shouldSaveRemarks() {
+            return Boolean.TRUE.equals(saveRemarks);
+        }
+    }
+
+    public record WriteOffItem(
+            @NotNull(message = "Asset id is required")
+            UUID id,
+            @Size(max = 2000, message = "Remarks must be at most 2000 characters")
+            String remarks) {}
 }

@@ -32,6 +32,7 @@ interface AssetApi {
         @Query("minQuantity") minQuantity: Int?,
         @Query("year") year: Int?,
         @Query("quarter") quarter: Int?,
+        @Query("itemNames") itemNames: List<String>?,
         @Query("page") page: Int,
         @Query("size") size: Int,
         @Query("sort") sort: String = "itemName,asc",
@@ -70,6 +71,10 @@ interface AssetApi {
     /** 回傳 .xlsx；檔名在 Content-Disposition。 */
     @POST("assets/export")
     suspend fun export(@Body body: ExportRequestDto): Response<ResponseBody>
+
+    /** 報銷核算 .xlsx；檔名固定為「報銷核算.xlsx」。 */
+    @POST("assets/export/write-off")
+    suspend fun exportWriteOff(@Body body: WriteOffExportRequestDto): Response<ResponseBody>
 
     @GET("locations")
     suspend fun locations(): List<LocationDto>

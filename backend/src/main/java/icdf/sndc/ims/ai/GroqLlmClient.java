@@ -67,17 +67,33 @@ public class GroqLlmClient implements LlmClient {
                 .header("Content-Type", "application/json")
                 .POST(HttpRequest.BodyPublishers.ofString(body, StandardCharsets.UTF_8))
                 .build();
-        HttpResponse<String> response;
-        try {
-            response = http.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
-        } catch (HttpTimeoutException e) {
-            throw unavailable("AI service timed out");
-        } catch (IOException e) {
-            log.warn("Groq request failed: {}", e.getMessage());
-            throw unavailable("AI service is unreachable");
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw unavailable("AI request was interrupted");
+        // 模型偶爾產生不符合 Schema 的輸出（Groq 回 400 json_validate_failed）、或 Groq 暫時性錯誤（5xx／逾時）：
+        // 自動重試一次，避免使用者看到「AI 助理暫時無法使用」
+        HttpResponse<String> response = null;
+        for (int attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+            boolean last = attempt == MAX_ATTEMPTS;
+            try {
+                response = http.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+            } catch (HttpTimeoutException e) {
+                log.warn("Groq request timed out (attempt {}/{})", attempt, MAX_ATTEMPTS);
+                if (last) throw unavailable("AI service timed out");
+                continue;
+            } catch (IOException e) {
+                log.warn("Groq request failed (attempt {}/{}): {}", attempt, MAX_ATTEMPTS, e.getMessage());
+                if (last) throw unavailable("AI service is unreachable");
+                continue;
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw unavailable("AI request was interrupted");
+            }
+            int status = response.statusCode();
+            boolean retryable = status >= 500 || (status == 400 && isGenerationFailure(response.body()));
+            if (retryable && !last) {
+                log.warn("Groq returned HTTP {} (attempt {}/{}), retrying: {}", status, attempt, MAX_ATTEMPTS,
+                        truncate(response.body()));
+                continue;
+            }
+            break;
         }
         int status = response.statusCode();
         if (status == 401) {
@@ -126,6 +142,14 @@ public class GroqLlmClient implements LlmClient {
             body.put("reasoning_effort", props.reasoningEffort());
         }
         return body;
+    }
+
+    static final int MAX_ATTEMPTS = 2;
+
+    /** 400 中屬於「模型這次產生失敗」的情況（重試通常就會成功），而不是請求本身有誤。 */
+    static boolean isGenerationFailure(String body) {
+        return body != null && (body.contains("json_validate_failed") || body.contains("output_parse_failed")
+                || body.contains("tool_use_failed") || body.contains("failed_generation"));
     }
 
     private static ApiException unavailable(String message) {

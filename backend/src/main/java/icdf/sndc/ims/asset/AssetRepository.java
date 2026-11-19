@@ -27,6 +27,9 @@ public interface AssetRepository extends JpaRepository<Asset, UUID>, JpaSpecific
     @EntityGraph(attributePaths = {"manager", "location"})
     List<Asset> findByIdInAndDeletedAtIsNull(Collection<UUID> ids);
 
+    @Query("select distinct a.itemName from Asset a where a.deletedAt is null order by a.itemName")
+    List<String> findDistinctActiveItemNames(org.springframework.data.domain.Pageable pageable);
+
     /** 名稱相同即視為同一品項；合計數量大於 1 才列入；排除 Soft Deleted（規格書第 5.2 節）。 */
     @Query("""
             select new icdf.sndc.ims.asset.DuplicateItem(a.itemName, sum(a.quantity), count(a))

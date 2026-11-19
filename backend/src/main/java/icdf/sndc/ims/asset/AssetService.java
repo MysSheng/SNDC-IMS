@@ -167,8 +167,25 @@ public class AssetService {
                 q.expiresTo(),
                 q.minQuantity(),
                 q.year(),
-                q.quarter());
+                q.quarter(),
+                normalizeNames(q.itemNames()));
         return AssetSpecifications.matching(normalized, today(), EXPIRING_SOON_DAYS);
+    }
+
+    /** 名稱清單：正規化、去除空白與重複，最多 50 個；沒有任何名稱時為 null。 */
+    static java.util.List<String> normalizeNames(java.util.List<String> names) {
+        if (names == null) {
+            return null;
+        }
+        java.util.List<String> out = names.stream().map(TextNormalizer::normalize)
+                .filter(java.util.Objects::nonNull).distinct().limit(50).toList();
+        return out.isEmpty() ? null : out;
+    }
+
+    /** 目前所有資產名稱（不含已刪除），提供給 AI 助理對應「椅子／chair」等說法；最多 300 個。 */
+    @Transactional(readOnly = true)
+    public java.util.List<String> distinctItemNames() {
+        return assetRepository.findDistinctActiveItemNames(org.springframework.data.domain.PageRequest.of(0, 300));
     }
 
     @Transactional

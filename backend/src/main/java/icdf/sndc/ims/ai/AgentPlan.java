@@ -13,7 +13,7 @@ record AgentPlan(String intent, Filters filters, Changes changes, String clarifi
             String keyword, String assetCode, String itemName, String techMission, String color,
             String locationName, String custodianName, String expiryStatus,
             String purchasedFrom, String purchasedTo, String expiresFrom, String expiresTo,
-            Integer minQuantity, Integer year, Integer quarter) {}
+            Integer minQuantity, Integer year, Integer quarter, java.util.List<String> itemNames) {}
 
     @JsonIgnoreProperties(ignoreUnknown = true)
     record Changes(

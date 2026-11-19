@@ -38,6 +38,9 @@ final class AssetSpecifications {
             if (q.assetCode() != null) {
                 p.add(cb.equal(root.get("assetCode"), q.assetCode()));
             }
+            if (q.itemNames() != null && !q.itemNames().isEmpty()) {
+                p.add(root.get("itemName").in(q.itemNames()));
+            }
             if (q.itemName() != null) {
                 p.add(cb.like(root.get("itemName"), "%" + escapeLike(q.itemName()) + "%", '\\'));
             }

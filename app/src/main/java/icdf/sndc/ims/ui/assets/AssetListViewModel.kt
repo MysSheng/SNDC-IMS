@@ -8,6 +8,8 @@ import icdf.sndc.ims.data.remote.AgentFiltersDto
 import icdf.sndc.ims.data.remote.AssetDto
 import icdf.sndc.ims.data.remote.PeriodDto
 import icdf.sndc.ims.data.remote.RefDto
+import icdf.sndc.ims.data.remote.WriteOffItemDto
+import icdf.sndc.ims.ui.common.AppPrefs
 import icdf.sndc.ims.ui.common.toUserMessage
 import icdf.sndc.ims.ui.common.tr
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -56,7 +58,9 @@ data class AssetListUiState(
     val deleting: Boolean = false,
     val message: String? = null,
     /** 勾選要匯出的資產 ID（換搜尋條件時保留，可跨頁、跨條件勾選）。 */
-    val selected: Set<String> = emptySet(),
+    val selected: Map<String, AssetDto> = emptyMap(),
+    /** 報銷核算的設定與備註編輯（null 代表沒有開啟）。 */
+    val writeOff: WriteOffDraft? = null,
     val exporting: Boolean = false,
     /** 匯出完成、等待使用者選擇存檔位置的檔案。 */
     val pendingExport: AssetRepository.ExportedFile? = null,
@@ -111,21 +115,88 @@ class AssetListViewModel(private val repo: AssetRepository) : ViewModel() {
 
     // ---------------- 勾選與匯出 ----------------
 
-    fun toggleSelected(id: String) = _state.update {
-        it.copy(selected = if (id in it.selected) it.selected - id else it.selected + id)
+    fun toggleSelected(asset: AssetDto) = _state.update {
+        it.copy(selected = if (asset.id in it.selected) it.selected - asset.id else it.selected + (asset.id to asset))
     }
 
     /** 勾選目前清單上已載入的全部資產。 */
-    fun selectAllLoaded() = _state.update { it.copy(selected = it.selected + it.items.map { a -> a.id }) }
+    fun selectAllLoaded() = _state.update { it.copy(selected = it.selected + it.items.associateBy { a -> a.id }) }
 
-    fun clearSelection() = _state.update { it.copy(selected = emptySet()) }
+    fun clearSelection() = _state.update { it.copy(selected = emptyMap()) }
+
+    // ---------------- 報銷核算 ----------------
+
+    /** 開啟報銷核算：先檢查備註，詢問是否要編輯。 */
+    fun startWriteOff() {
+        val s = _state.value
+        if (s.selected.isEmpty()) return
+        val today = java.time.LocalDate.now()
+        val rows = s.selected.values.sortedBy { it.assetCode }.map {
+            WriteOffRow(it.id, it.assetCode, it.itemName, it.description, it.description.orEmpty())
+        }
+        _state.update {
+            it.copy(
+                writeOff = WriteOffDraft(
+                    title = AppPrefs.getString(WriteOffDraft.PREF_TITLE, WriteOffDraft.DEFAULT_TITLE),
+                    year = s.year ?: today.year,
+                    quarter = if (s.year != null) s.quarter else (today.monthValue - 1) / 3 + 1,
+                    rows = rows,
+                ),
+            )
+        }
+    }
+
+    private fun updateWriteOff(f: (WriteOffDraft) -> WriteOffDraft) =
+        _state.update { s -> s.copy(writeOff = s.writeOff?.let(f)) }
+
+    fun editWriteOffRemarks() = updateWriteOff { it.copy(editing = true) }
+    fun setWriteOffTitle(v: String) = updateWriteOff { it.copy(title = v.take(200)) }
+    fun setWriteOffYear(y: Int?) = updateWriteOff { it.copy(year = y, quarter = if (y == null) null else it.quarter) }
+    fun setWriteOffQuarter(q: Int?) = updateWriteOff { it.copy(quarter = q) }
+    fun setWriteOffSaveRemarks(v: Boolean) = updateWriteOff { it.copy(saveRemarks = v) }
+    fun setWriteOffBatchText(v: String) = updateWriteOff { it.copy(batchText = v.take(2000)) }
+    fun setWriteOffRemark(id: String, v: String) = updateWriteOff { d ->
+        d.copy(rows = d.rows.map { if (it.id == id) it.copy(remark = v.take(2000)) else it })
+    }
+
+    /** 批量填寫：onlyEmpty = true 只填入目前沒有備註的資產。 */
+    fun applyWriteOffBatch(onlyEmpty: Boolean) = updateWriteOff { d ->
+        val text = d.batchText.trim()
+        if (text.isEmpty()) d else d.copy(rows = d.rows.map {
+            if (!onlyEmpty || it.remark.isBlank()) it.copy(remark = text) else it
+        })
+    }
+
+    fun cancelWriteOff() = _state.update { it.copy(writeOff = null) }
+
+    /** 匯出報銷核算。沒有進入編輯時，沿用資產目前的備註且不寫回。 */
+    fun exportWriteOff() {
+        val d = _state.value.writeOff ?: return
+        if (d.exporting) return
+        AppPrefs.putString(WriteOffDraft.PREF_TITLE, d.title.trim())
+        updateWriteOff { it.copy(exporting = true) }
+        viewModelScope.launch {
+            val items = d.rows.map { WriteOffItemDto(it.id, if (d.editing) it.remark.trim().ifEmpty { null } else null) }
+            val save = d.editing && d.saveRemarks
+            when (val r = repo.exportWriteOff(items, d.title, d.year, d.quarter, save)) {
+                is ApiResult.Success -> {
+                    _state.update { it.copy(writeOff = null, pendingExport = r.data) }
+                    if (save) refresh()
+                }
+                is ApiResult.Failure -> {
+                    updateWriteOff { it.copy(exporting = false) }
+                    _state.update { it.copy(message = r.error.toUserMessage()) }
+                }
+            }
+        }
+    }
 
     fun exportSelected() {
         val s = _state.value
         if (s.selected.isEmpty() || s.exporting) return
         _state.update { it.copy(exporting = true) }
         viewModelScope.launch {
-            when (val r = repo.export(s.selected.toList(), s.year, s.quarter)) {
+            when (val r = repo.export(s.selected.keys.toList(), s.year, s.quarter)) {
                 is ApiResult.Success -> _state.update { it.copy(exporting = false, pendingExport = r.data) }
                 is ApiResult.Failure -> _state.update { it.copy(exporting = false, message = r.error.toUserMessage()) }
             }
@@ -136,7 +207,7 @@ class AssetListViewModel(private val repo: AssetRepository) : ViewModel() {
     fun exportHandled(saved: Boolean, error: String? = null) = _state.update {
         it.copy(
             pendingExport = null,
-            selected = if (saved) emptySet() else it.selected,
+            selected = if (saved) emptyMap() else it.selected,
             message = error ?: if (saved) tr("已匯出 ${it.selected.size} 筆資產", "Exported ${it.selected.size} assets") else it.message,
         )
     }
@@ -155,8 +226,10 @@ class AssetListViewModel(private val repo: AssetRepository) : ViewModel() {
             itemName = f.itemName, assetCode = f.assetCode, techMission = f.techMission, color = f.color,
             purchasedFrom = f.purchasedFrom, purchasedTo = f.purchasedTo,
             expiresFrom = f.expiresFrom, expiresTo = f.expiresTo, minQuantity = f.minQuantity,
+            itemNames = f.itemNames?.takeIf { it.isNotEmpty() },
         )
         val labels = buildList {
+            f.itemNames?.takeIf { it.isNotEmpty() }?.let { add(tr("名稱：", "name: ") + it.joinToString("、")) }
             f.itemName?.let { add(tr("名稱含「$it」", "name contains \"$it\"")) }
             f.assetCode?.let { add(tr("編號 $it", "code $it")) }
             f.techMission?.let { add(tr("技術團：$it", "mission: $it")) }
@@ -255,4 +328,35 @@ class AssetListViewModel(private val repo: AssetRepository) : ViewModel() {
     }
 
     fun messageShown() = _state.update { it.copy(message = null) }
+}
+
+/** 報銷核算的一列：original 為資產目前的備註，remark 為要寫進報銷核算的備註。 */
+data class WriteOffRow(
+    val id: String,
+    val assetCode: String,
+    val itemName: String,
+    val original: String?,
+    val remark: String,
+)
+
+data class WriteOffDraft(
+    /** 計畫名稱（標題列），會記住上次輸入的內容。 */
+    val title: String,
+    val year: Int?,
+    val quarter: Int?,
+    val rows: List<WriteOffRow>,
+    /** false：詢問是否編輯備註；true：顯示備註編輯畫面。 */
+    val editing: Boolean = false,
+    val batchText: String = DEFAULT_REASON,
+    /** 把編輯後的備註同時存回資產；原本的備註會移到後面的括號內，例如「報廢原因:…(財國合發字第1號)」。 */
+    val saveRemarks: Boolean = true,
+    val exporting: Boolean = false,
+) {
+    val missingRemarks: Int get() = rows.count { it.remark.isBlank() }
+
+    companion object {
+        const val PREF_TITLE = "writeOffTitle"
+        const val DEFAULT_TITLE = "索馬利蘭政府資料中心與資訊安全能提升計畫"
+        const val DEFAULT_REASON = "報廢原因:超過使用年限且損壞。"
+    }
 }

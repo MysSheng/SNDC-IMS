@@ -215,7 +215,8 @@ class AssetImportExportIntegrationTest extends ApiTestSupport {
         try (Workbook wb = WorkbookFactory.create(new ByteArrayInputStream(file))) {
             assertThat(wb.getNumberOfSheets()).isEqualTo(1);
             Sheet s = wb.getSheetAt(0);
-            assertThat(s.getSheetName()).isEqualTo("王小明");
+            // 工作表名稱為盤點期別
+            assertThat(s.getSheetName()).isEqualTo("2026Q3");
             assertThat(s.getRow(0).getCell(0).getStringCellValue()).isEqualTo("駐索馬利蘭技術團2026年財產管理個人清單");
             assertThat(s.getRow(2).getCell(0).getStringCellValue()).isEqualTo("財產保管人：王小明");
             assertThat(s.getRow(5).getCell(0).getStringCellValue()).isEqualTo("60107-0035");
@@ -231,6 +232,106 @@ class AssetImportExportIntegrationTest extends ApiTestSupport {
         body.put("ids", List.of());
         perform(post("/api/v1/assets/export").contentType(MediaType.APPLICATION_JSON).content(toJson(body)))
                 .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void writeOffExportFollowsTemplateAndCanSaveRemarks() throws Exception {
+        importAndConfirm("清單_2026Q1.xlsx", supervisorWorkbook("王小明", List.of(
+                row("60102-0005", "印表機", "EPSON L382噴墨印表機", "2018", 3, "團部", "臺", "150.00", "財國合發字第1號"),
+                row("60114-0150", "電腦椅", null, "2017", 6, "ICT中心", "張", "40.00", null))));
+        String a = read(perform(get("/api/v1/assets").param("keyword", "60102-0005")), "$.items[0].id");
+        String b = read(perform(get("/api/v1/assets").param("keyword", "60114-0150")), "$.items[0].id");
+        String reason = "報廢原因:超過使用年限且損壞。";
+
+        // 不儲存備註：只影響匯出內容
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("items", List.of());
+        body.put("title", "測試計畫");
+        body.put("year", 2026);
+        body.put("quarter", 1);
+        body.put("saveRemarks", false);
+        String json = toJson(body).replace("\"items\":[]",
+                "\"items\":[{\"id\":\"" + b + "\",\"remarks\":\"" + reason + "\"},{\"id\":\"" + a + "\",\"remarks\":null}]");
+        byte[] file = perform(post("/api/v1/assets/export/write-off").contentType(MediaType.APPLICATION_JSON).content(json))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Content-Disposition",
+                        org.hamcrest.Matchers.containsString("%E5%A0%B1%E9%8A%B7%E6%A0%B8%E7%AE%97.xlsx")))
+                .andReturn().getResponse().getContentAsByteArray();
+        try (Workbook wb = WorkbookFactory.create(new ByteArrayInputStream(file))) {
+            Sheet s = wb.getSheetAt(0);
+            assertThat(s.getRow(0).getCell(0).getStringCellValue()).isEqualTo("測試計畫 2026年Q1");
+            assertThat(s.getRow(1).getCell(0).getStringCellValue()).isEqualTo("報廢物品: ");
+            assertThat(s.getRow(2).getCell(1).getStringCellValue()).isEqualTo("Asset ID");
+            // 依送出的順序；備註 null 時沿用資產目前的備註
+            assertThat(s.getRow(3).getCell(0).getNumericCellValue()).isEqualTo(1.0);
+            assertThat(s.getRow(3).getCell(1).getStringCellValue()).isEqualTo("60114-0150");
+            assertThat(s.getRow(3).getCell(5).getStringCellValue()).isEqualTo(reason);
+            assertThat(s.getRow(4).getCell(2).getStringCellValue()).isEqualTo("印表機");
+            assertThat(s.getRow(4).getCell(3).getStringCellValue()).isEqualTo("EPSON L382噴墨印表機");
+            assertThat(s.getRow(4).getCell(4).getStringCellValue()).isEqualTo("團部");
+            assertThat(s.getRow(4).getCell(5).getStringCellValue()).isEqualTo("財國合發字第1號");
+        }
+        perform(get("/api/v1/assets/" + b)).andExpect(jsonPath("$.description").doesNotExist());
+
+        // 沒送 saveRemarks（舊版 App 在 false 時會省略此欄位）也要能匯出，且不寫回
+        perform(post("/api/v1/assets/export/write-off").contentType(MediaType.APPLICATION_JSON)
+                .content(json.replace(",\"saveRemarks\":false", "")))
+                .andExpect(status().isOk());
+        perform(get("/api/v1/assets/" + b)).andExpect(jsonPath("$.description").doesNotExist());
+
+        // 儲存備註
+        perform(post("/api/v1/assets/export/write-off").contentType(MediaType.APPLICATION_JSON)
+                .content(json.replace("\"saveRemarks\":false", "\"saveRemarks\":true")))
+                .andExpect(status().isOk());
+        perform(get("/api/v1/assets/" + b)).andExpect(jsonPath("$.description").value(reason));
+        perform(get("/api/v1/assets/" + a)).andExpect(jsonPath("$.description").value("財國合發字第1號"));
+
+        // 原本有備註：新備註在前，原本的移到括號內；重複匯出不會再加一次
+        String withA = json.replace("\"remarks\":null", "\"remarks\":\"" + reason + "\"")
+                .replace("\"saveRemarks\":false", "\"saveRemarks\":true");
+        byte[] second = perform(post("/api/v1/assets/export/write-off").contentType(MediaType.APPLICATION_JSON).content(withA))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsByteArray();
+        perform(get("/api/v1/assets/" + a)).andExpect(jsonPath("$.description").value(reason + "(財國合發字第1號)"));
+        try (Workbook wb = WorkbookFactory.create(new ByteArrayInputStream(second))) {
+            // 報銷核算檔案中只放這次填的備註
+            assertThat(wb.getSheetAt(0).getRow(4).getCell(5).getStringCellValue()).isEqualTo(reason);
+        }
+        perform(post("/api/v1/assets/export/write-off").contentType(MediaType.APPLICATION_JSON).content(withA))
+                .andExpect(status().isOk());
+        perform(get("/api/v1/assets/" + a)).andExpect(jsonPath("$.description").value(reason + "(財國合發字第1號)"));
+
+        body.put("quarter", 5);
+        perform(post("/api/v1/assets/export/write-off").contentType(MediaType.APPLICATION_JSON)
+                .content(json.replace("\"quarter\":1", "\"quarter\":5")))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void exportPutsEachCustodianInABlockOnOnePeriodSheet() throws Exception {
+        importAndConfirm("清單A_2026Q3.xlsx", supervisorWorkbook("王小明",
+                List.of(row("A-1", "書櫃", null, "2026", 1, "團部", "個", "20.00", null))));
+        importAndConfirm("清單B_2026Q3.xlsx", supervisorWorkbook("陳大文",
+                List.of(row("B-1", "白板", null, "2026", 9, "ICT中心", "具", "35.00", null))));
+        String a = read(perform(get("/api/v1/assets").param("keyword", "A-1")), "$.items[0].id");
+        String b = read(perform(get("/api/v1/assets").param("keyword", "B-1")), "$.items[0].id");
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("ids", List.of(a, b));
+        body.put("year", 2026);
+        byte[] file = perform(post("/api/v1/assets/export").contentType(MediaType.APPLICATION_JSON).content(toJson(body)))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsByteArray();
+        try (Workbook wb = WorkbookFactory.create(new ByteArrayInputStream(file))) {
+            assertThat(wb.getNumberOfSheets()).isEqualTo(1);
+            Sheet s = wb.getSheetAt(0);
+            assertThat(s.getSheetName()).isEqualTo("2026");
+            assertThat(s.getRow(2).getCell(0).getStringCellValue()).isEqualTo("財產保管人：王小明");
+            // 第一個區塊：0–6 列，空兩列後第二個區塊從第 8 列開始
+            assertThat(s.getRow(8 + 2).getCell(0).getStringCellValue()).isEqualTo("財產保管人：陳大文");
+            assertThat(s.getRow(8 + 5).getCell(0).getStringCellValue()).isEqualTo("B-1");
+        }
+        // 多位保管人的檔案也能再匯入
+        upload("匯出_2026Q4.xlsx", file, null, null)
+                .andExpect(jsonPath("$.errorCount").value(0))
+                .andExpect(jsonPath("$.updateCount").value(2));
     }
 
     // ------------------------------------------------------------------
@@ -299,7 +400,9 @@ class AssetImportExportIntegrationTest extends ApiTestSupport {
         if (year != null) req.param("year", year.toString());
         if (quarter != null) req.param("quarter", quarter.toString());
         if (mission != null) req.param("techMission", mission);
-        return perform(req);
+        // Spring 7 起 multipart 的 builder 不再繼承 MockHttpServletRequestBuilder，直接加上 Token
+        req.header("Authorization", "Bearer " + token);
+        return mvc.perform(req);
     }
 
     private void importAndConfirm(String name, byte[] bytes) throws Exception {

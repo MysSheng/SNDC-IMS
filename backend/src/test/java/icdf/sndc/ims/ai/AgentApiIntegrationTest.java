@@ -29,13 +29,18 @@ class AgentApiIntegrationTest extends ApiTestSupport {
 
     /** 每個測試設定下一次「模型輸出」。 */
     static volatile String nextOutput;
+    /** 最近一次送給模型的系統提示（檢查資產名稱清單）。 */
+    static volatile String lastSystem;
 
     @TestConfiguration
     static class ScriptedLlmConfig {
         @Bean
         @Primary
         LlmClient scriptedLlm() {
-            return (system, turns) -> nextOutput;
+            return (system, turns) -> {
+                lastSystem = system;
+                return nextOutput;
+            };
         }
     }
 
@@ -57,6 +62,27 @@ class AgentApiIntegrationTest extends ApiTestSupport {
         createAsset("60109-0003", "水管", liu, today.minusYears(1));            // 劉正正，未過期
         createAsset("60109-0004", "冷氣", lee, today.minusYears(5).plusDays(20)); // 李大維，快到期
         createAsset("60109-0005", "冷氣", lee, today.minusYears(1));            // 李大維，未過期
+    }
+
+    @Test
+    void categoryWordsMapToActualItemNames() throws Exception {
+        // 模型拿到資料庫中的實際名稱清單，把「computer／電腦類」對應到多個名稱
+        nextOutput = plan("COUNT", filters().replace("\"itemNames\":null", "\"itemNames\":[\"電腦\",\"螢幕\",\"不存在的名稱\"]"), null);
+        ask("How many computers do we have?")
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.intent").value("COUNT"))
+                .andExpect(jsonPath("$.summary.recordCount").value(2))
+                .andExpect(jsonPath("$.filters.itemNames.length()").value(3));
+        // 只檢查「資產名稱」這一段：系統提示的範例句本身就有人名（例如劉正正），不能用整份提示判斷
+        String start = "## 目前資料庫中的資產名稱";
+        String names = lastSystem.substring(lastSystem.indexOf(start) + start.length());
+        names = names.substring(0, names.indexOf("##"));
+        assertThat(names).contains("電腦").contains("冷氣").contains("水管").contains("螢幕")
+                .doesNotContain("劉正正").doesNotContain("李大維").doesNotContain("第一辦公室");
+
+        // 「在清單中顯示」使用同樣的條件
+        mvc.perform(bearer(get("/api/v1/assets").param("itemNames", "電腦", "冷氣"), token))
+                .andExpect(jsonPath("$.totalItems").value(3));
     }
 
     @Test
@@ -223,7 +249,7 @@ class AgentApiIntegrationTest extends ApiTestSupport {
 
     private static final List<String> FILTER_KEYS = List.of("keyword", "assetCode", "itemName", "techMission", "color",
             "locationName", "custodianName", "expiryStatus", "purchasedFrom", "purchasedTo", "expiresFrom", "expiresTo",
-            "minQuantity", "year", "quarter");
+            "minQuantity", "year", "quarter", "itemNames");
     private static final List<String> CHANGE_KEYS = List.of("assetCode", "itemName", "techMission", "color",
             "description", "locationName", "custodianName", "purchaseDate", "usefulLifeYears", "quantity",
             "specification", "unit");

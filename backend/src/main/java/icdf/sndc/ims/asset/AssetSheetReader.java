@@ -271,6 +271,10 @@ final class AssetSheetReader {
             if (code == null || code.contains("小計") || code.contains("合計")) {
                 continue;
             }
+            // 同一工作表中有多個保管人區塊時，後面區塊的標題列、製表日期列不是資料
+            if (code.contains("清單") || code.startsWith("製表日期")) {
+                continue;
+            }
             if (out.size() >= MAX_DATA_ROWS + 1) {
                 break;
             }

@@ -27,6 +27,8 @@ data class AgentFiltersDto(
     val minQuantity: Int? = null,
     val year: Int? = null,
     val quarter: Int? = null,
+    /** 小管家把「椅子／chair」對應到的實際名稱（完全符合其中任一個）。 */
+    val itemNames: List<String>? = null,
 )
 
 @Serializable

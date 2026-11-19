@@ -215,8 +215,21 @@ fun SmartOfficeScreen(
                     Text(tr("已選 ${state.selected.size} 筆", "${state.selected.size} selected"), modifier = Modifier.weight(1f))
                     TextButton(onClick = viewModel::selectAllLoaded) { Text(tr("全選", "Select all")) }
                     TextButton(onClick = viewModel::clearSelection) { Text(tr("清除", "Clear")) }
-                    Button(onClick = viewModel::exportSelected, enabled = !state.exporting) {
-                        Text(if (state.exporting) tr("匯出中…", "Exporting…") else tr("匯出", "Export"))
+                    Box {
+                        var exportMenu by remember { mutableStateOf(false) }
+                        Button(onClick = { exportMenu = true }, enabled = !state.exporting) {
+                            Text(if (state.exporting) tr("匯出中…", "Exporting…") else tr("匯出 ▾", "Export ▾"))
+                        }
+                        DropdownMenu(expanded = exportMenu, onDismissRequest = { exportMenu = false }) {
+                            DropdownMenuItem(
+                                text = { Text(tr("財產清單（主管格式）", "Asset list (supervisor format)")) },
+                                onClick = { exportMenu = false; viewModel.exportSelected() },
+                            )
+                            DropdownMenuItem(
+                                text = { Text(tr("報銷核算", "Write-off list (報銷核算)")) },
+                                onClick = { exportMenu = false; viewModel.startWriteOff() },
+                            )
+                        }
                     }
                 }
             }
@@ -252,7 +265,7 @@ fun SmartOfficeScreen(
                         AssetCard(
                             asset = asset,
                             checked = asset.id in state.selected,
-                            onCheckedChange = { viewModel.toggleSelected(asset.id) },
+                            onCheckedChange = { viewModel.toggleSelected(asset) },
                         ) {
                             when (state.mode) {
                                 PickMode.VIEW -> onOpen(asset.id)
@@ -283,6 +296,8 @@ fun SmartOfficeScreen(
         AgentAvatar(60)
     }
     }
+
+    state.writeOff?.let { WriteOffDialog(it, viewModel) }
 
     if (showImport) {
         AssetImportDialog(
